@@ -7,6 +7,7 @@ import pytest
 from annual_report_rag.config import (
     IngestionConfig,
     ProviderConfig,
+    QualityConfig,
     RetrievalConfig,
     RetryConfig,
     Settings,
@@ -26,15 +27,20 @@ def test_load_default_settings() -> None:
     assert isinstance(settings.ingestion, IngestionConfig)
     assert isinstance(settings.retrieval, RetrievalConfig)
     assert isinstance(settings.storage, StorageConfig)
+    assert isinstance(settings.quality, QualityConfig)
 
     assert settings.provider.name == "gemini"
     assert settings.provider.embedding_dimension == 768
-    assert settings.provider.batch_size == 50
+    assert settings.provider.batch_size == 20
+    assert settings.provider.max_items_per_minute == 80
     assert settings.provider.retry.max_retries == 3
+    assert settings.provider.retry.max_rate_limit_retries == 5
     assert settings.ingestion.chunk_size == 1000
     assert settings.ingestion.chunk_overlap == 200
     assert settings.ingestion.min_page_chars == 50
     assert settings.storage.collection_name == "annual_reports"
+    assert settings.quality.single_letter_ratio_threshold == 0.15
+    assert settings.quality.odd_char_ratio_threshold == 0.05
 
 
 def test_missing_config_file_raises_error(tmp_path: Path) -> None:
@@ -54,9 +60,11 @@ provider:
   embedding_model: "fake-embed"
   generation_model: "fake-gen"
   embedding_dimension: 256
-  batch_size: 20
+  batch_size: 15
+  max_items_per_minute: 60
   retry:
     max_retries: 2
+    max_rate_limit_retries: 4
     initial_wait_seconds: 0.5
     max_wait_seconds: 2.0
 ingestion:
@@ -70,6 +78,9 @@ storage:
   collection_name: "temp_collection"
   raw_data_dir: "temp_raw"
   eval_data_dir: "temp_eval"
+quality:
+  single_letter_ratio_threshold: 0.20
+  odd_char_ratio_threshold: 0.08
         """,
         encoding="utf-8",
     )
@@ -81,9 +92,13 @@ storage:
 
     assert settings.provider.name == "fake"
     assert settings.provider.embedding_dimension == 256
-    assert settings.provider.batch_size == 20
+    assert settings.provider.batch_size == 15
+    assert settings.provider.max_items_per_minute == 60
     assert settings.provider.retry.max_retries == 2
+    assert settings.provider.retry.max_rate_limit_retries == 4
     assert settings.ingestion.chunk_size == 500
     assert settings.ingestion.min_page_chars == 10
     assert settings.storage.collection_name == "temp_collection"
+    assert settings.quality.single_letter_ratio_threshold == 0.20
+    assert settings.quality.odd_char_ratio_threshold == 0.08
     assert settings.gemini_api_key == "test_secret_key_123"

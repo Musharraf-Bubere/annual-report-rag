@@ -62,3 +62,31 @@ When searching via `search_demo.py`, your question is embedded with `task_type="
 * **Scanned or Image-Only PDFs**: The current pipeline relies on born-digital text streams. Image-only PDFs (scanned documents) contain zero extractable text. The loader prints a clear warning, but OCR processing is intentionally out of scope for this phase.
 * **Facts Split Across Page Boundaries**: Because chunks are strictly bounded by individual pages to guarantee 100% accurate page citations, a multi-sentence explanation that begins on page 10 and concludes on page 11 will be split across two separate chunks. The query retriever must retrieve both chunks (via top-$k$) to assemble the complete context.
 * **Physical PDF Page Index vs. Printed Page Number**: PDF page indexes (`doc[idx]` where `page = idx + 1`) represent the absolute physical sheet in the PDF viewer. Annual reports typically feature cover pages, tables of contents, and Roman-numeral prefaces (e.g. pages i–iv), meaning physical PDF page 42 might correspond to printed report page number 38.
+
+---
+
+## Phase 2b: Free-Tier Rate Limiting and Text Quality Audit
+
+### What problem this phase solves
+During our initial trial run attempting to index the real annual report PDFs, two severe operational realities emerged:
+1. **API Rate-Limit Crashes**: Google Gemini free-tier accounts enforce a ceiling of approximately 100 requests / items per minute. Dispatching large 50-chunk batches at maximum network speed quickly triggered HTTP 429 `RESOURCE_EXHAUSTED` with server messages stating `"Please retry in 27s"`. Our initial 3-attempt exponential backoff gave up after ~7 seconds, terminating ingestion prematurely.
+2. **Extracted Text Corruption**: Inspecting extracted passages revealed that certain styled pages extracted as garbled text. In `tcs-ar-26.pdf` (notably page 8, the Chairman's letter), words were severely spaced out (`"i n th i s b ack d rop"`) and numbers/letters were corrupted (`"ĐonƐolŝdated ƌevenue oĨ ₹ 26ϳ,021 Đƌoƌe"`). In a financial RAG system, corrupted numbers invalidate the entire premise of grounded fact retrieval.
+
+Crucially, **we stopped before proceeding with full ingestion**. If we had blindly pushed ahead, we would have burned hours of API quota embedding corrupted tokens that would permanently pollute ChromaDB with hallucination-inducing noise.
+
+### What we built
+1. **Sliding-Window Rate Limiter (`providers/rate_limiter.py`)**: A client-side throughput regulator tracking timestamped items over a 60-second sliding window. It transparently paces embedding calls to 80 items/minute (safely below the 100/min quota) with smaller batch sizes (20 items). Built with injectable clock and sleep functions for sub-millisecond offline unit testing.
+2. **Delay-Aware 429 Retry Loop (`providers/gemini.py`)**: On encountering HTTP 429, the provider parses Google's exact recommended wait interval (`"retry in Ns"`), waits that duration plus 1 second, and retries up to 5 times while printing transparent wait notifications. Standard exponential backoff is preserved for 5xx server drops.
+3. **Pausable, Resumable Progress & Collection Reset**: `indexer.py` reports real-time batch progress (`Embedded 300/3118 chunks`). `scripts/ingest.py` dry-run mode now prints estimated embedding time (~39 minutes for 3,118 chunks at 80 items/min), and includes a `--reset` flag to wipe ChromaDB before re-indexing.
+4. **Explainable Text Quality Metrics (`ingestion/quality.py`)**: Implemented simple, explainable mathematical metrics per page:
+   - `single_letter_ratio`: proportion of alphabetic tokens of length 1 (captures spaced-out words like `"i n th i s"`).
+   - `odd_char_ratio`: proportion of characters outside standard ASCII/punctuation/symbols (captures broken font glyph encodings).
+   - `char_count`: total characters on the page.
+5. **Automated Document Audit Tool (`scripts/audit_text_quality.py`)**: Audits every page of all raw PDFs, calculates median and 95th percentile distributions, flags pages exceeding thresholds (single-letter > 0.15, odd-char > 0.05), surfaces the 10 worst pages with excerpts, and exports a complete CSV report to `data/processed/text_quality_report.csv`.
+
+### What the audit revealed
+Running the audit across both annual reports (743 pages total) provided clear diagnostic clarity:
+* **`infosys-ar-26.pdf` (383 pages)**: Clean. Median single-letter ratio is 1.9% (P95: 8.5%). Zero pages exceeded the odd-character threshold. Only 4 pages exceeded the single-letter threshold, all consisting of corporate subsidiary tables with abbreviations (e.g. `ANZ Pty Ltd. (9)`).
+* **`tcs-ar-26.pdf` (360 pages)**: Heavily affected by font-tracking defects. 31 pages exceeded the single-letter ratio threshold, with styled executive letters reaching up to 46% single-character tokens (pages 8, 9, 22, 25, 28). Numbers were fractured into pieces (`"584, 51 9"` and `"44, 0 0 0 +"`).
+
+Having quantified and cataloged the exact pages and failure modes into `data/processed/text_quality_report.csv`, we can address extraction repairs with targeted verification before doing any real embedding runs.

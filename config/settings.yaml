@@ -1,13 +1,15 @@
 provider:
   name: "gemini"
-  embedding_model: "gemini-embedding-001"
+  embedding_model: "gemini-embedding-2"
   generation_model: "gemini-3.5-flash-lite"
   embedding_dimension: 768    # Vector dimension for embeddings (e.g. 768 for gemini-embedding-001 / text-embedding-004)
-  batch_size: 50              # Batch size for embedding calls to avoid payload limits
+  batch_size: 20              # Batch size for embedding calls; reduced to 20 to avoid free-tier payload spikes
+  max_items_per_minute: 80    # Maximum items to embed per minute to stay safely within free-tier limits (~100 req/min)
   retry:
-    max_retries: 3            # Maximum retry attempts on 429 rate limit or 5xx temporary errors
+    max_retries: 3            # Maximum retry attempts on 5xx temporary server errors
+    max_rate_limit_retries: 5 # Maximum retry attempts on 429 rate limit errors (with backoff wait)
     initial_wait_seconds: 1.0 # Initial backoff delay in seconds
-    max_wait_seconds: 10.0    # Maximum backoff delay cap in seconds
+    max_wait_seconds: 60.0    # Maximum backoff delay cap in seconds
 
 ingestion:
   chunk_size: 1000            # Target chunk length in characters
@@ -22,3 +24,7 @@ storage:
   collection_name: "annual_reports" # ChromaDB collection name
   raw_data_dir: "data/raw"          # Directory containing input annual report PDFs
   eval_data_dir: "data/eval"        # Directory containing evaluation datasets
+
+quality:
+  single_letter_ratio_threshold: 0.15 # Flag pages where single-letter tokens exceed 15% (spaced-out words)
+  odd_char_ratio_threshold: 0.05       # Flag pages where unusual characters exceed 5% (broken font encodings)

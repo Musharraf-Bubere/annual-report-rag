@@ -7,6 +7,7 @@ import pymupdf
 from annual_report_rag.config import (
     IngestionConfig,
     ProviderConfig,
+    QualityConfig,
     RetrievalConfig,
     RetryConfig,
     Settings,
@@ -26,8 +27,12 @@ def _build_test_settings(db_dir: Path) -> Settings:
             generation_model="fake-gen",
             embedding_dimension=32,
             batch_size=10,
+            max_items_per_minute=60,
             retry=RetryConfig(
-                max_retries=1, initial_wait_seconds=0.1, max_wait_seconds=0.5
+                max_retries=1,
+                max_rate_limit_retries=2,
+                initial_wait_seconds=0.1,
+                max_wait_seconds=0.5,
             ),
         ),
         ingestion=IngestionConfig(
@@ -39,6 +44,10 @@ def _build_test_settings(db_dir: Path) -> Settings:
             collection_name="test_idempotence",
             raw_data_dir=str(db_dir / "raw"),
             eval_data_dir=str(db_dir / "eval"),
+        ),
+        quality=QualityConfig(
+            single_letter_ratio_threshold=0.15,
+            odd_char_ratio_threshold=0.05,
         ),
     )
 

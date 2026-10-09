@@ -16,7 +16,9 @@ def get_provider(settings: Settings) -> BaseProvider:
             embedding_model=settings.provider.embedding_model,
             generation_model=settings.provider.generation_model,
             embedding_dimension=settings.provider.embedding_dimension,
+            max_items_per_minute=settings.provider.max_items_per_minute,
             max_retries=settings.provider.retry.max_retries,
+            max_rate_limit_retries=settings.provider.retry.max_rate_limit_retries,
             initial_wait_seconds=settings.provider.retry.initial_wait_seconds,
             max_wait_seconds=settings.provider.retry.max_wait_seconds,
         )

@@ -14,6 +14,7 @@ class RetryConfig:
     """Holds retry parameters for transient API failures."""
 
     max_retries: int
+    max_rate_limit_retries: int
     initial_wait_seconds: float
     max_wait_seconds: float
 
@@ -27,6 +28,7 @@ class ProviderConfig:
     generation_model: str
     embedding_dimension: int
     batch_size: int
+    max_items_per_minute: int
     retry: RetryConfig
 
 
@@ -57,6 +59,14 @@ class StorageConfig:
 
 
 @dataclass(frozen=True)
+class QualityConfig:
+    """Holds anomaly thresholds for text quality auditing."""
+
+    single_letter_ratio_threshold: float
+    odd_char_ratio_threshold: float
+
+
+@dataclass(frozen=True)
 class Settings:
     """Aggregates all application configurations and secrets into a single typed object."""
 
@@ -64,6 +74,7 @@ class Settings:
     ingestion: IngestionConfig
     retrieval: RetrievalConfig
     storage: StorageConfig
+    quality: QualityConfig
     gemini_api_key: str | None = None
 
 
@@ -76,21 +87,26 @@ def load_yaml_file(file_path: Path) -> dict[str, Any]:
     return data or {}
 
 
-def parse_provider_config(data: dict[str, Any]) -> ProviderConfig:
-    """Parses provider and retry parameters into a typed ProviderConfig instance."""
-    retry_data = data.get("retry", {})
-    retry = RetryConfig(
+def parse_retry_config(retry_data: dict[str, Any]) -> RetryConfig:
+    """Parses retry policy parameters into a typed RetryConfig instance."""
+    return RetryConfig(
         max_retries=int(retry_data.get("max_retries", 3)),
+        max_rate_limit_retries=int(retry_data.get("max_rate_limit_retries", 5)),
         initial_wait_seconds=float(retry_data.get("initial_wait_seconds", 1.0)),
-        max_wait_seconds=float(retry_data.get("max_wait_seconds", 10.0)),
+        max_wait_seconds=float(retry_data.get("max_wait_seconds", 60.0)),
     )
+
+
+def parse_provider_config(data: dict[str, Any]) -> ProviderConfig:
+    """Parses provider, rate limit, and retry parameters into a typed ProviderConfig."""
     return ProviderConfig(
         name=str(data.get("name", "gemini")),
-        embedding_model=str(data.get("embedding_model", "gemini-embedding-001")),
+        embedding_model=str(data.get("embedding_model", "gemini-embedding-2")),
         generation_model=str(data.get("generation_model", "gemini-3.5-flash-lite")),
         embedding_dimension=int(data.get("embedding_dimension", 768)),
-        batch_size=int(data.get("batch_size", 50)),
-        retry=retry,
+        batch_size=int(data.get("batch_size", 20)),
+        max_items_per_minute=int(data.get("max_items_per_minute", 80)),
+        retry=parse_retry_config(data.get("retry", {})),
     )
 
 
@@ -113,6 +129,18 @@ def parse_storage_config(data: dict[str, Any]) -> StorageConfig:
     )
 
 
+def parse_quality_config(data: dict[str, Any]) -> QualityConfig:
+    """Parses text quality thresholds into a typed QualityConfig instance."""
+    return QualityConfig(
+        single_letter_ratio_threshold=float(
+            data.get("single_letter_ratio_threshold", 0.15)
+        ),
+        odd_char_ratio_threshold=float(
+            data.get("odd_char_ratio_threshold", 0.05)
+        ),
+    )
+
+
 def load_settings(
     config_path: Path | str = "config/settings.yaml",
     env_path: Path | str = ".env",
@@ -130,5 +158,6 @@ def load_settings(
         ingestion=parse_ingestion_config(data.get("ingestion", {})),
         retrieval=RetrievalConfig(top_k=int(data.get("retrieval", {}).get("top_k", 5))),
         storage=parse_storage_config(data.get("storage", {})),
+        quality=parse_quality_config(data.get("quality", {})),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
     )

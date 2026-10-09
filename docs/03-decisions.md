@@ -129,3 +129,41 @@ This document captures key design decisions, their rationale, alternatives consi
 * **Choice:** Exponential backoff retry (`initial_wait * 2^attempt`, capped at `max_wait_seconds`).
 * **Reason:** Transparently absorbs transient rate spikes and temporary server drops without manual developer intervention or pipeline crashes. Configurable in `config/settings.yaml`.
 * **Trade-off:** Transient failures will increase execution time during backoff intervals before succeeding.
+
+---
+
+### Decision 11: Free-Tier Rate Limiting via Client-Side Sliding-Window Limiter
+
+* **Context:** Google Gemini API free-tier quotas restrict embedding throughput to approximately 100 requests / items per minute. Ingestion of 3,100+ chunks causes immediate HTTP 429 `RESOURCE_EXHAUSTED` failures if dispatched at full speed.
+* **Options Considered:**
+  1. Rely exclusively on reactive retry loops when 429 is encountered.
+  2. Fixed sleep (`time.sleep(N)`) after every single batch.
+  3. Client-side sliding-window rate limiter with configurable quota (`max_items_per_minute = 80`).
+* **Choice:** Client-side sliding-window limiter (`SlidingWindowRateLimiter`) with injectable clock/sleep functions.
+* **Reason:** A sliding window accurately models time-elapsed quotas across uneven batch requests. It paces outbound embedding calls smoothly, ensuring we stay reliably beneath the 100 req/min limit without unpredictable bursts.
+* **Trade-off:** Ingestion takes longer (e.g., ~38 minutes for 3,100 chunks at 80 items/min), but runs reliably without quota crashes.
+
+---
+
+### Decision 12: Proactive Pacing vs. Reactive Retry Only
+
+* **Context:** When consuming rate-limited third-party APIs, systems can either pace requests proactively or blast requests and retry upon HTTP 429.
+* **Options Considered:**
+  1. Reactive-only: Send batches as fast as possible; catch 429, parse "retry in 27s", and sleep.
+  2. Proactive pacing + reactive fallback: Pace throughput to 80% of quota (80 items/min) and retain delay-aware retry as a safety net.
+* **Choice:** Hybrid proactive pacing with delay-aware 429 retry fallback.
+* **Reason:** Pushing APIs to 100% saturation and repeatedly triggering 429 responses causes quota penalties, burns network connection retries, and wastes time in long penalty cooldowns. Proactive pacing keeps the pipeline flowing smoothly, while the delay-aware 429 handler catches occasional quota fluctuations by parsing Google's exact `retry in Ns` suggestion (+1 second).
+* **Trade-off:** Requires maintaining both a rate limiter and a delay-parsing retry loop.
+
+---
+
+### Decision 13: Empirical Text Quality Audit Before Applying Extraction Fixes
+
+* **Context:** Ingestion revealed garbled text (e.g. TCS page 8: broken font encodings and spaced-out letters like `"i n th i s b ack d rop"`). Before applying regex heuristics or changing PDF parsing engines, we need to know the scale and distribution of the problem across both reports.
+* **Options Considered:**
+  1. Immediately apply ad-hoc regex fixes to `loader.py` (e.g., join single letters).
+  2. Switch PDF extraction libraries immediately (e.g., to pdfplumber or OCR).
+  3. Build an automated offline audit script (`audit_text_quality.py`) with explainable metrics (`single_letter_ratio`, `odd_char_ratio`, `char_count`) to quantify and catalog defects before touching ingestion code.
+* **Choice:** Empirical audit first (`ingestion/quality.py` and `scripts/audit_text_quality.py`).
+* **Reason:** Ad-hoc regex replacements can easily corrupt valid acronyms, equations, and tables if applied blindly. Auditing first provides clear data: Infosys is almost completely clean (P95 single-letter ratio is 8.5%), whereas TCS has 31 severely affected pages (P95 single-letter ratio is 19.5%, reaching up to 46% on letter-spaced executive pages). This isolates the exact nature of the defect for a targeted fix.
+* **Trade-off:** Delays fixing the text extraction to Phase 2c, but ensures any future fix can be measured against a definitive baseline report (`data/processed/text_quality_report.csv`).

@@ -29,12 +29,16 @@ def embed_and_store_batches(
     chunks: list[Chunk],
     batch_size: int,
 ) -> None:
-    """Embeds new chunks in configurable batch sizes and stores them in vector DB."""
-    for i in range(0, len(chunks), batch_size):
+    """Embeds new chunks in batches, reporting incremental progress and storing vectors."""
+    total = len(chunks)
+    processed = 0
+    for i in range(0, total, batch_size):
         batch = chunks[i : i + batch_size]
         texts = [c.text for c in batch]
         vectors = provider.embed(texts, purpose="document")
         store.add_chunks(batch, vectors)
+        processed += len(batch)
+        print(f"Embedded {processed}/{total} chunks")
 
 
 def index_pdfs(
@@ -73,9 +77,12 @@ def index_pdfs(
     new_chunks = [c for c in all_chunks if c.id not in existing_ids]
 
     if new_chunks:
+        print(f"Found {len(new_chunks)} new chunk(s) to embed out of {len(all_chunks)} total.")
         embed_and_store_batches(
             provider, store, new_chunks, settings.provider.batch_size
         )
+    else:
+        print("All chunks already exist in vector store. Nothing new to embed.")
 
     elapsed = time.perf_counter() - start_time
     return IndexingSummary(

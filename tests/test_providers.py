@@ -7,6 +7,7 @@ import pytest
 from annual_report_rag.config import (
     IngestionConfig,
     ProviderConfig,
+    QualityConfig,
     RetrievalConfig,
     RetryConfig,
     Settings,
@@ -34,8 +35,12 @@ def _build_dummy_settings(
             generation_model="gemini-3.5-flash-lite",
             embedding_dimension=128,
             batch_size=25,
+            max_items_per_minute=80,
             retry=RetryConfig(
-                max_retries=3, initial_wait_seconds=1.0, max_wait_seconds=5.0
+                max_retries=3,
+                max_rate_limit_retries=5,
+                initial_wait_seconds=1.0,
+                max_wait_seconds=5.0,
             ),
         ),
         ingestion=IngestionConfig(
@@ -47,6 +52,10 @@ def _build_dummy_settings(
             collection_name="test_col",
             raw_data_dir="data/raw",
             eval_data_dir="data/eval",
+        ),
+        quality=QualityConfig(
+            single_letter_ratio_threshold=0.15,
+            odd_char_ratio_threshold=0.05,
         ),
         gemini_api_key=api_key,
     )

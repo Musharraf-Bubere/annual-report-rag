@@ -32,7 +32,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Parse and chunk only, estimating API calls without embedding or storing",
+        help="Parse and chunk only, estimating API calls and runtime without embedding",
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Delete existing collection before indexing to re-index all documents",
     )
     return parser.parse_args()
 
@@ -45,6 +50,7 @@ def execute_dry_run(
     """Executes parsing and chunking in dry-run mode without calling embedding APIs."""
     print("\n--- Running Ingestion Dry-Run ---")
     batch_size = settings.provider.batch_size
+    rate = settings.provider.max_items_per_minute
     total_chunks = 0
     total_pages_read = 0
     total_pages_skipped = 0
@@ -83,6 +89,8 @@ def execute_dry_run(
     total_api_calls = (
         math.ceil(total_chunks / batch_size) if total_chunks > 0 else 0
     )
+    est_minutes = total_chunks / rate if rate > 0 else 0.0
+
     print("\n--- Dry-Run Summary ---")
     print(f"Total PDFs:               {len(pdf_paths)}")
     print(f"Total pages read:         {total_pages_read}")
@@ -90,6 +98,9 @@ def execute_dry_run(
     print(f"Total chunks created:     {total_chunks}")
     print(
         f"Total est. API calls:     {total_api_calls} (batch size {batch_size})"
+    )
+    print(
+        f"Est. embedding time:      ~{est_minutes:.1f} min (at {rate} items/min limit)"
     )
 
 
@@ -108,12 +119,17 @@ def main() -> None:
         execute_dry_run(pdf_paths, settings, args.limit_pages)
         return
 
-    provider = get_provider(settings)
     store = ChromaStore(
         persist_path=settings.storage.vector_store_path,
         collection_name=settings.storage.collection_name,
     )
 
+    if args.reset:
+        print(f"Resetting collection '{settings.storage.collection_name}'...")
+        store.reset()
+        print("Collection reset successfully.")
+
+    provider = get_provider(settings)
     print(f"Indexing {len(pdf_paths)} document(s)...")
     summary = index_pdfs(
         pdf_paths, provider, store, settings, limit_pages=args.limit_pages

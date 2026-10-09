@@ -26,9 +26,19 @@ class ChromaStore:
         collection_name: str = "annual_reports",
     ) -> None:
         """Initializes persistent Chroma client and ensures collection exists with cosine distance."""
+        self.persist_path = persist_path
+        self.collection_name = collection_name
         self.client = chromadb.PersistentClient(path=persist_path)
         self.collection = self.client.get_or_create_collection(
             name=collection_name,
+            metadata={"hnsw:space": "cosine"},
+        )
+
+    def reset(self) -> None:
+        """Deletes and recreates the collection, purging all existing chunks."""
+        self.client.delete_collection(name=self.collection_name)
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
             metadata={"hnsw:space": "cosine"},
         )
 

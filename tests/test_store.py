@@ -57,3 +57,16 @@ def test_empty_store_query(tmp_path: Path) -> None:
     results = store.query([0.5, 0.5], top_k=5)
     assert results == []
     assert store.existing_ids([]) == set()
+
+
+def test_chroma_store_reset(tmp_path: Path) -> None:
+    """Verifies that reset() deletes all existing records from the collection."""
+    db_path = str(tmp_path / "reset_db")
+    store = ChromaStore(persist_path=db_path, collection_name="reset_col")
+    chunk = Chunk(id="c1", text="Sample", source="s", page=1, chunk_index=0)
+    store.add_chunks([chunk], [[1.0, 0.0]])
+    assert store.count() == 1
+
+    store.reset()
+    assert store.count() == 0
+

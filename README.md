@@ -38,24 +38,31 @@ Place your source annual report PDF files inside the `data/raw/` directory (for 
 
 ### Running Document Ingestion
 
-1. **Dry-run estimation (no API calls or costs)**:
-   Parse and chunk documents to preview page counts, chunk counts, and estimated embedding API calls:
+1. **Audit document text quality (offline, zero API costs)**:
+   Audit raw PDFs for text corruption (broken fonts, spaced-out words) and export a report:
+   ```bash
+   uv run python scripts/audit_text_quality.py
+   ```
+
+2. **Dry-run estimation (no API calls or costs)**:
+   Parse and chunk documents to preview page counts, chunk counts, estimated embedding calls, and estimated runtime:
    ```bash
    uv run python scripts/ingest.py --dry-run
    ```
 
-2. **Trial run with limited pages**:
+3. **Trial run with limited pages**:
    Test end-to-end embedding on just the first 5 pages of each PDF:
    ```bash
    uv run python scripts/ingest.py --limit-pages 5
    ```
 
-3. **Full ingestion into Chroma vector store**:
-   Idempotently embed all new chunks in batches and persist to ChromaDB:
+4. **Full ingestion into Chroma vector store**:
+   Idempotently embed all new chunks in rate-paced batches (default 20 chunks, max 80 items/min) and persist to ChromaDB:
    ```bash
    uv run python scripts/ingest.py
    ```
-   Re-running this command is completely safe: existing chunk IDs are detected and skipped without repeating embedding API calls.
+   > [!TIP]
+   > On the Google Gemini free tier (capped at 100 requests/minute), full ingestion of ~3,100 chunks takes approximately **35–45 minutes**. You can interrupt the run at any point (Ctrl+C) and resume later; previously indexed chunks are detected and skipped in milliseconds without repeating API calls. To wipe and rebuild the index from scratch, pass the `--reset` flag.
 
 ### Running the Search Demo
 

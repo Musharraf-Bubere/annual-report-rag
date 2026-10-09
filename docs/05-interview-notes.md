@@ -71,3 +71,29 @@ We construct deterministic coordinate chunk IDs formatted as `{source}-p{page}-c
 ### Question 10: How does your chunking algorithm ensure words and numbers are never cut in half?
 **Answer:**
 Rather than slicing naively on fixed character indices, our chunker identifies the target boundary (`start + chunk_size`) and then scans backwards to locate the nearest whitespace character (`rfind(' ')`). It slices at that space boundary. When computing the start of the next overlapping chunk (`end - chunk_overlap`), it similarly snaps to the next available word boundary. This guarantees that critical financial numbers (e.g. `$27,950M`) and technical terms are never split into meaningless fragments across chunks.
+
+---
+
+## Phase 2b: Rate Limiting, Retries, and Document Quality
+
+### Question 11: How do you handle cloud provider rate limits (such as HTTP 429) during batch document ingestion?
+**Answer:**
+We employ a two-layer strategy:
+1. **Proactive Throughput Regulation**: A client-side sliding-window rate limiter (`SlidingWindowRateLimiter`) measures item throughput over the previous 60 seconds and pauses execution before requests violate provider ceilings (pacing to 80 items/min for a 100/min quota).
+2. **Reactive Delay-Aware Retries**: If HTTP 429 `RESOURCE_EXHAUSTED` occurs due to transient backend congestion, the provider parses the server's exact backoff directive (e.g. `"Please retry in 27s"`), pauses for that duration plus a 1-second safety buffer, and retries up to 5 times.
+
+### Question 12: Why combine proactive rate limiting with reactive retry logic rather than relying on retries alone?
+**Answer:**
+Relying solely on reactive retries forces the system to repeatedly hit rate limit walls. When cloud providers issue HTTP 429, they often enforce mandatory cooldown penalties (e.g. 27–60 seconds). Rapidly blasting requests until failure wastes TCP connections, triggers quota tripwires, and degrades total throughput. Proactive pacing throttles calls just beneath the ceiling, keeping processing smooth and steady, while reactive retries act as a resilient safety net for unexpected quota drops.
+
+### Question 13: Why is an offline text quality audit critical before vector indexing in a RAG pipeline?
+**Answer:**
+"Garbage in, vector store out, hallucinations generated." In financial RAG, models must answer specific questions regarding operating margins, headcount, and liabilities. If PDF extraction produces spaced-out text (e.g. `"584, 51 9"` instead of `584,519`) or broken character encodings (`"ĐonƐolŝdated"`), the embedding model receives fragmented subwords that destroy semantic similarity matching. Vectorizing corrupted text wastes API credits, pollutes vector indexes, and guarantees downstream hallucination. Performing an automated audit with explainable metrics (`single_letter_ratio`, `odd_char_ratio`) catches and localizes extraction defects before expensive indexing begins.
+
+### Question 14: How can rate-limited batch ingestion pipelines be designed to support crash recovery and resumption?
+**Answer:**
+By ensuring strict idempotency at every batch insertion:
+1. Deterministic coordinate chunk IDs (`{source}-p{page}-c{chunk_index}`) are generated upfront.
+2. Before dispatching embedding calls, the pipeline queries the vector store (`existing_ids`) and removes already indexed chunks from the processing queue.
+3. Chunks are committed to the persistent vector store immediately after each batch call.
+If the pipeline is terminated halfway through a 3,000-chunk ingest, re-running the script automatically skips the completed batches in milliseconds and seamlessly resumes from the exact chunk where it left off.
