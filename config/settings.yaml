@@ -1,0 +1,16 @@
+provider:
+  name: "gemini"
+  embedding_model: "text-embedding-004"
+  generation_model: "gemini-2.5-flash"
+
+ingestion:
+  chunk_size: 1000
+  chunk_overlap: 200
+
+retrieval:
+  top_k: 5
+
+storage:
+  vector_store_path: "chroma_db"
+  raw_data_dir: "data/raw"
+  eval_data_dir: "data/eval"

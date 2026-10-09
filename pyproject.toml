@@ -1,0 +1,24 @@
+[project]
+name = "annual-report-rag"
+version = "0.1.0"
+description = "Question answering over company annual reports using RAG, with page citations and a measured evaluation harness."
+readme = "README.md"
+authors = [
+    { name = "Musharraf-Bubere", email = "musharrafbubere007@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=2.29.0",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]

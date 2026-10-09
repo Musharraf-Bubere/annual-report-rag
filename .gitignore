@@ -1,0 +1,25 @@
+# Environment variables and secrets
+.env
+*.env
+!.env.example
+
+# Raw data (financial reports contain raw PDFs / files)
+data/raw/
+
+# Vector database storage
+chroma_db/
+data/chroma/
+.chroma/
+
+# Python virtual environment and bytecode
+.venv/
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Testing and linting caches
+.pytest_cache/
+.ruff_cache/
