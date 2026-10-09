@@ -1,16 +1,24 @@
 provider:
   name: "gemini"
-  embedding_model: "text-embedding-004"
-  generation_model: "gemini-2.5-flash"
+  embedding_model: "gemini-embedding-001"
+  generation_model: "gemini-3.5-flash-lite"
+  embedding_dimension: 768    # Vector dimension for embeddings (e.g. 768 for gemini-embedding-001 / text-embedding-004)
+  batch_size: 50              # Batch size for embedding calls to avoid payload limits
+  retry:
+    max_retries: 3            # Maximum retry attempts on 429 rate limit or 5xx temporary errors
+    initial_wait_seconds: 1.0 # Initial backoff delay in seconds
+    max_wait_seconds: 10.0    # Maximum backoff delay cap in seconds
 
 ingestion:
-  chunk_size: 1000
-  chunk_overlap: 200
+  chunk_size: 1000            # Target chunk length in characters
+  chunk_overlap: 200          # Overlap length in characters between adjacent chunks
+  min_page_chars: 50          # Minimum characters required; pages below this are skipped
 
 retrieval:
-  top_k: 5
+  top_k: 5                    # Number of top relevant chunks to retrieve
 
 storage:
-  vector_store_path: "chroma_db"
-  raw_data_dir: "data/raw"
-  eval_data_dir: "data/eval"
+  vector_store_path: "chroma_db"    # Filesystem path for persistent ChromaDB storage
+  collection_name: "annual_reports" # ChromaDB collection name
+  raw_data_dir: "data/raw"          # Directory containing input annual report PDFs
+  eval_data_dir: "data/eval"        # Directory containing evaluation datasets

@@ -8,6 +8,7 @@ from annual_report_rag.config import (
     IngestionConfig,
     ProviderConfig,
     RetrievalConfig,
+    RetryConfig,
     Settings,
     StorageConfig,
     load_settings,
@@ -21,16 +22,19 @@ def test_load_default_settings() -> None:
 
     assert isinstance(settings, Settings)
     assert isinstance(settings.provider, ProviderConfig)
+    assert isinstance(settings.provider.retry, RetryConfig)
     assert isinstance(settings.ingestion, IngestionConfig)
     assert isinstance(settings.retrieval, RetrievalConfig)
     assert isinstance(settings.storage, StorageConfig)
 
     assert settings.provider.name == "gemini"
-    assert settings.provider.embedding_model == "text-embedding-004"
-    assert settings.provider.generation_model == "gemini-2.5-flash"
+    assert settings.provider.embedding_dimension == 768
+    assert settings.provider.batch_size == 50
+    assert settings.provider.retry.max_retries == 3
     assert settings.ingestion.chunk_size == 1000
     assert settings.ingestion.chunk_overlap == 200
-    assert settings.retrieval.top_k == 5
+    assert settings.ingestion.min_page_chars == 50
+    assert settings.storage.collection_name == "annual_reports"
 
 
 def test_missing_config_file_raises_error(tmp_path: Path) -> None:
@@ -49,13 +53,21 @@ provider:
   name: "fake"
   embedding_model: "fake-embed"
   generation_model: "fake-gen"
+  embedding_dimension: 256
+  batch_size: 20
+  retry:
+    max_retries: 2
+    initial_wait_seconds: 0.5
+    max_wait_seconds: 2.0
 ingestion:
   chunk_size: 500
   chunk_overlap: 50
+  min_page_chars: 10
 retrieval:
   top_k: 3
 storage:
   vector_store_path: "temp_db"
+  collection_name: "temp_collection"
   raw_data_dir: "temp_raw"
   eval_data_dir: "temp_eval"
         """,
@@ -68,6 +80,10 @@ storage:
     settings = load_settings(config_path=custom_yaml, env_path=custom_env)
 
     assert settings.provider.name == "fake"
+    assert settings.provider.embedding_dimension == 256
+    assert settings.provider.batch_size == 20
+    assert settings.provider.retry.max_retries == 2
     assert settings.ingestion.chunk_size == 500
-    assert settings.retrieval.top_k == 3
+    assert settings.ingestion.min_page_chars == 10
+    assert settings.storage.collection_name == "temp_collection"
     assert settings.gemini_api_key == "test_secret_key_123"

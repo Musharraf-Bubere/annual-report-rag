@@ -15,9 +15,13 @@ def get_provider(settings: Settings) -> BaseProvider:
             api_key=settings.gemini_api_key,
             embedding_model=settings.provider.embedding_model,
             generation_model=settings.provider.generation_model,
+            embedding_dimension=settings.provider.embedding_dimension,
+            max_retries=settings.provider.retry.max_retries,
+            initial_wait_seconds=settings.provider.retry.initial_wait_seconds,
+            max_wait_seconds=settings.provider.retry.max_wait_seconds,
         )
 
     if provider_name == "fake":
-        return FakeProvider()
+        return FakeProvider(embedding_dim=settings.provider.embedding_dimension)
 
     raise ValueError(f"Unsupported provider: '{provider_name}'")

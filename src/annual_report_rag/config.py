@@ -10,12 +10,24 @@ from dotenv import load_dotenv
 
 
 @dataclass(frozen=True)
+class RetryConfig:
+    """Holds retry parameters for transient API failures."""
+
+    max_retries: int
+    initial_wait_seconds: float
+    max_wait_seconds: float
+
+
+@dataclass(frozen=True)
 class ProviderConfig:
-    """Holds configuration for model provider name and specific model identifiers."""
+    """Holds configuration for model provider, dimensions, batching, and retries."""
 
     name: str
     embedding_model: str
     generation_model: str
+    embedding_dimension: int
+    batch_size: int
+    retry: RetryConfig
 
 
 @dataclass(frozen=True)
@@ -24,6 +36,7 @@ class IngestionConfig:
 
     chunk_size: int
     chunk_overlap: int
+    min_page_chars: int
 
 
 @dataclass(frozen=True)
@@ -35,9 +48,10 @@ class RetrievalConfig:
 
 @dataclass(frozen=True)
 class StorageConfig:
-    """Holds filesystem paths for raw files, eval sets, and vector storage."""
+    """Holds filesystem paths and collection name for vector and document storage."""
 
     vector_store_path: str
+    collection_name: str
     raw_data_dir: str
     eval_data_dir: str
 
@@ -62,40 +76,59 @@ def load_yaml_file(file_path: Path) -> dict[str, Any]:
     return data or {}
 
 
+def parse_provider_config(data: dict[str, Any]) -> ProviderConfig:
+    """Parses provider and retry parameters into a typed ProviderConfig instance."""
+    retry_data = data.get("retry", {})
+    retry = RetryConfig(
+        max_retries=int(retry_data.get("max_retries", 3)),
+        initial_wait_seconds=float(retry_data.get("initial_wait_seconds", 1.0)),
+        max_wait_seconds=float(retry_data.get("max_wait_seconds", 10.0)),
+    )
+    return ProviderConfig(
+        name=str(data.get("name", "gemini")),
+        embedding_model=str(data.get("embedding_model", "gemini-embedding-001")),
+        generation_model=str(data.get("generation_model", "gemini-3.5-flash-lite")),
+        embedding_dimension=int(data.get("embedding_dimension", 768)),
+        batch_size=int(data.get("batch_size", 50)),
+        retry=retry,
+    )
+
+
+def parse_ingestion_config(data: dict[str, Any]) -> IngestionConfig:
+    """Parses ingestion parameters into a typed IngestionConfig instance."""
+    return IngestionConfig(
+        chunk_size=int(data.get("chunk_size", 1000)),
+        chunk_overlap=int(data.get("chunk_overlap", 200)),
+        min_page_chars=int(data.get("min_page_chars", 50)),
+    )
+
+
+def parse_storage_config(data: dict[str, Any]) -> StorageConfig:
+    """Parses storage paths and collection configuration into StorageConfig."""
+    return StorageConfig(
+        vector_store_path=str(data.get("vector_store_path", "chroma_db")),
+        collection_name=str(data.get("collection_name", "annual_reports")),
+        raw_data_dir=str(data.get("raw_data_dir", "data/raw")),
+        eval_data_dir=str(data.get("eval_data_dir", "data/eval")),
+    )
+
+
 def load_settings(
     config_path: Path | str = "config/settings.yaml",
     env_path: Path | str = ".env",
 ) -> Settings:
-    """Loads settings from YAML and secrets from environment variables into a typed Settings instance."""
-    resolved_env_path = Path(env_path)
-    if resolved_env_path.exists():
-        load_dotenv(dotenv_path=resolved_env_path, override=True)
+    """Loads YAML settings and .env secrets into an aggregated Settings instance."""
+    resolved_env = Path(env_path)
+    if resolved_env.exists():
+        load_dotenv(dotenv_path=resolved_env, override=True)
     else:
         load_dotenv(override=False)
 
-    yaml_data = load_yaml_file(Path(config_path))
-    provider_data = yaml_data.get("provider", {})
-    ingestion_data = yaml_data.get("ingestion", {})
-    retrieval_data = yaml_data.get("retrieval", {})
-    storage_data = yaml_data.get("storage", {})
-
+    data = load_yaml_file(Path(config_path))
     return Settings(
-        provider=ProviderConfig(
-            name=provider_data.get("name", "gemini"),
-            embedding_model=provider_data.get("embedding_model", "text-embedding-004"),
-            generation_model=provider_data.get("generation_model", "gemini-2.5-flash"),
-        ),
-        ingestion=IngestionConfig(
-            chunk_size=int(ingestion_data.get("chunk_size", 1000)),
-            chunk_overlap=int(ingestion_data.get("chunk_overlap", 200)),
-        ),
-        retrieval=RetrievalConfig(
-            top_k=int(retrieval_data.get("top_k", 5)),
-        ),
-        storage=StorageConfig(
-            vector_store_path=storage_data.get("vector_store_path", "chroma_db"),
-            raw_data_dir=storage_data.get("raw_data_dir", "data/raw"),
-            eval_data_dir=storage_data.get("eval_data_dir", "data/eval"),
-        ),
+        provider=parse_provider_config(data.get("provider", {})),
+        ingestion=parse_ingestion_config(data.get("ingestion", {})),
+        retrieval=RetrievalConfig(top_k=int(data.get("retrieval", {}).get("top_k", 5))),
+        storage=parse_storage_config(data.get("storage", {})),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
     )
