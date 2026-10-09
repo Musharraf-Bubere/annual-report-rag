@@ -97,3 +97,35 @@ By ensuring strict idempotency at every batch insertion:
 2. Before dispatching embedding calls, the pipeline queries the vector store (`existing_ids`) and removes already indexed chunks from the processing queue.
 3. Chunks are committed to the persistent vector store immediately after each batch call.
 If the pipeline is terminated halfway through a 3,000-chunk ingest, re-running the script automatically skips the completed batches in milliseconds and seamlessly resumes from the exact chunk where it left off.
+
+---
+
+## Phase 2c: Audit Metrics Fix and Extractor Comparison Experiment
+
+### Question 15: Why is PDF text extraction notoriously hard, and how do font encodings and character tracking lead to corrupted text or spaced-out letters?
+**Answer:**
+PDF is a visual presentation format, not a structured text document.
+1. **Space Insertion Heuristics**: PDFs do not store ASCII space characters (`" "`) between words; they place glyphs at physical $(x, y)$ coordinates. Text extractors must deduce where spaces belong by checking if the horizontal gap between consecutive characters exceeds an advance threshold. When designers use tight letter-tracking or custom fonts, extractors (like PyMuPDF by default) misinterpret font advance gaps as spaces, splitting words into single letters (`"F ortune M ag az i ne"`) and fracturing numbers (`"584, 51 9"`). PyMuPDF's `TEXT_INHIBIT_SPACES` flag disables this heuristic.
+2. **Font Encodings & CMap Tables**: PDFs map glyph IDs to characters using `/Encoding` and `/ToUnicode` mapping tables. If a document designer uses a non-standard or corrupted font subset, glyph IDs map to arbitrary Unicode characters (e.g. `0x03F3` instead of ASCII `7`). The extractor faithfully returns the mapped character without knowing it looks like a `7` visually.
+
+---
+
+### Question 16: How do you evaluate and benchmark text extraction quality offline on unlabelled document corpora?
+**Answer:**
+Without manual ground-truth transcriptions, we use statistical rule-based heuristics that measure deviations from natural language:
+1. **`single_letter_ratio`**: In normal English, words are several characters long; single letters account for $< 3\%$ of tokens (`"a"`, `"I"`). When tracking issues fragment words, this ratio spikes to $20\%-50\%$.
+2. **`odd_char_count` & `odd_char_ratio`**: Measures characters outside standard ASCII, whitespace, and financial currency symbols ($\$$, $€$, ₹). High counts capture broken font glyph encodings.
+3. **`number_split_count`**: Detects runs of single digits separated by spaces (`\b\d(?: \d)+\b`), capturing fractured numbers (`"2 0 2 6"`, `"44, 0 0 0"`).
+By running these metrics across multiple candidate extractors, we can objectively measure the percentage of flagged pages cleaned, median metric reductions, and execution latency.
+
+---
+
+### Question 17: Why did `"267,021"` fail to extract as ASCII `"267,021"` across all five PDF extractors on TCS Page 8?
+**Answer:**
+The font used in that heading (`HouschkaRounded-DemiBold`) has an internal ToUnicode CMap table where the glyph for digit `7` was assigned character code `0x03F3` (`ϳ`, Greek Small Letter Yot). Every standard PDF parser (`PyMuPDF`, `pypdf`, `pdfminer.six`) parses the font stream according to the official PDF specification and reads the character code mapped in the ToUnicode table. Because all extractors correctly read `0x03F3` rather than ASCII `0x0037`, none of them can output `"267,021"` without visual OCR (e.g. Tesseract) or custom heuristic glyph replacement tables.
+
+---
+
+### Question 18: Why is storing embedding model name and dimension metadata in ChromaDB essential for production RAG systems?
+**Answer:**
+Vector embeddings from different models inhabit completely incompatible geometric manifolds. Even if two models share the same output dimension (e.g. 768), a vector from `gemini-embedding-001` cannot be compared via cosine similarity against a vector from `text-embedding-004` or an open-source model. If a collection lacks metadata tracking, changing model settings in `settings.yaml` silently allows the database to accept mixed vectors, destroying retrieval quality and hallucinating answers. Storing `embedding_model` and `embedding_dimension` in collection metadata enables fail-fast validation on startup, forcing a clean re-index with `--reset`.

@@ -1,6 +1,6 @@
 provider:
   name: "gemini"
-  embedding_model: "gemini-embedding-2"
+  embedding_model: "gemini-embedding-001"
   generation_model: "gemini-3.5-flash-lite"
   embedding_dimension: 768    # Vector dimension for embeddings (e.g. 768 for gemini-embedding-001 / text-embedding-004)
   batch_size: 20              # Batch size for embedding calls; reduced to 20 to avoid free-tier payload spikes
@@ -27,4 +27,6 @@ storage:
 
 quality:
   single_letter_ratio_threshold: 0.15 # Flag pages where single-letter tokens exceed 15% (spaced-out words)
-  odd_char_ratio_threshold: 0.05       # Flag pages where unusual characters exceed 5% (broken font encodings)
+  odd_char_ratio_threshold: 0.002     # Flag pages where unusual characters exceed 0.2% (broken font encodings)
+  odd_char_count_threshold: 15        # Flag pages with 15 or more unusual characters (absolute count)
+  number_split_threshold: 3           # Flag pages with 3 or more split number sequences (e.g. "2 0 2 6")

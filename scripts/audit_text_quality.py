@@ -3,6 +3,7 @@
 import csv
 import math
 import statistics
+import sys
 from pathlib import Path
 
 import pymupdf
@@ -10,6 +11,9 @@ import pymupdf
 from annual_report_rag.config import load_settings
 from annual_report_rag.ingestion.loader import clean_text
 from annual_report_rag.ingestion.quality import PageQualityMetrics, assess_page_quality
+
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
 def calculate_percentile(values: list[float], pct: float) -> float:
@@ -50,7 +54,9 @@ def print_pdf_audit_summary(
     metrics: list[PageQualityMetrics],
     excerpts: list[str],
     single_threshold: float,
-    odd_threshold: float,
+    odd_ratio_threshold: float,
+    odd_count_threshold: int,
+    number_split_threshold: int,
 ) -> None:
     """Prints statistical distributions, threshold violations, and top 10 worst pages."""
     print("\n=======================================================")
@@ -60,6 +66,8 @@ def print_pdf_audit_summary(
 
     single_ratios = [m.single_letter_ratio for m in metrics]
     odd_ratios = [m.odd_char_ratio for m in metrics]
+    odd_counts = [float(m.odd_char_count) for m in metrics]
+    number_splits = [float(m.number_split_count) for m in metrics]
     char_counts = [float(m.char_count) for m in metrics]
 
     print("\n--- Metric Distributions (Median / 95th Percentile) ---")
@@ -75,27 +83,46 @@ def print_pdf_audit_summary(
     print(
         f"  Odd character ratio:  Median: {statistics.median(odd_ratios):.4f} | "
         f"P95: {calculate_percentile(odd_ratios, 95):.4f} "
-        f"(Threshold: >{odd_threshold:.2f})"
+        f"(Threshold: >{odd_ratio_threshold:.4f})"
+    )
+    print(
+        f"  Odd character count:  Median: {int(statistics.median(odd_counts))} | "
+        f"P95: {int(calculate_percentile(odd_counts, 95))} "
+        f"(Threshold: >={odd_count_threshold})"
+    )
+    print(
+        f"  Number split count:   Median: {int(statistics.median(number_splits))} | "
+        f"P95: {int(calculate_percentile(number_splits, 95))} "
+        f"(Threshold: >={number_split_threshold})"
     )
 
     flagged_single = [m for m in metrics if m.single_letter_ratio > single_threshold]
-    flagged_odd = [m for m in metrics if m.odd_char_ratio > odd_threshold]
+    flagged_odd_ratio = [m for m in metrics if m.odd_char_ratio > odd_ratio_threshold]
+    flagged_odd_count = [m for m in metrics if m.odd_char_count >= odd_count_threshold]
+    flagged_num_split = [m for m in metrics if m.number_split_count >= number_split_threshold]
     flagged_any = [
         m
         for m in metrics
-        if m.single_letter_ratio > single_threshold or m.odd_char_ratio > odd_threshold
+        if m.single_letter_ratio > single_threshold
+        or m.odd_char_ratio > odd_ratio_threshold
+        or m.odd_char_count >= odd_count_threshold
+        or m.number_split_count >= number_split_threshold
     ]
 
     print("\n--- Threshold Violations ---")
     print(f"  Pages exceeding single-letter ratio: {len(flagged_single)}")
-    print(f"  Pages exceeding odd-character ratio: {len(flagged_odd)}")
+    print(f"  Pages exceeding odd-character ratio: {len(flagged_odd_ratio)}")
+    print(f"  Pages exceeding odd-character count: {len(flagged_odd_count)}")
+    print(f"  Pages with split numbers:           {len(flagged_num_split)}")
     print(f"  Total flagged pages (any defect):    {len(flagged_any)}")
 
     ranked_indices = sorted(
         range(len(metrics)),
         key=lambda i: max(
             metrics[i].single_letter_ratio / max(single_threshold, 0.001),
-            metrics[i].odd_char_ratio / max(odd_threshold, 0.001),
+            metrics[i].odd_char_ratio / max(odd_ratio_threshold, 0.001),
+            float(metrics[i].odd_char_count) / max(odd_count_threshold, 1),
+            float(metrics[i].number_split_count) / max(number_split_threshold, 1),
         ),
         reverse=True,
     )
@@ -107,7 +134,8 @@ def print_pdf_audit_summary(
         safe_snippet = snippet.encode("ascii", errors="replace").decode("ascii")
         print(
             f"  #{rank:02d} Page {m.page:03d} | chars: {m.char_count:4d} | "
-            f"single: {m.single_letter_ratio:.4f} | odd: {m.odd_char_ratio:.4f}"
+            f"single: {m.single_letter_ratio:.4f} | odd_r: {m.odd_char_ratio:.4f} | "
+            f"odd_cnt: {m.odd_char_count:2d} | split_cnt: {m.number_split_count:2d}"
         )
         print(f"       Snippet: \"{safe_snippet}...\"")
 
@@ -124,6 +152,8 @@ def write_csv_report(
         "char_count",
         "single_letter_ratio",
         "odd_char_ratio",
+        "odd_char_count",
+        "number_split_count",
         "exceeds_threshold",
         "excerpt",
     ]
@@ -146,18 +176,28 @@ def main() -> None:
 
     csv_rows: list[dict[str, object]] = []
     single_thresh = settings.quality.single_letter_ratio_threshold
-    odd_thresh = settings.quality.odd_char_ratio_threshold
+    odd_ratio_thresh = settings.quality.odd_char_ratio_threshold
+    odd_count_thresh = settings.quality.odd_char_count_threshold
+    num_split_thresh = settings.quality.number_split_threshold
 
     for pdf_path in pdf_paths:
         metrics, excerpts = audit_pdf(pdf_path)
         print_pdf_audit_summary(
-            pdf_path.name, metrics, excerpts, single_thresh, odd_thresh
+            pdf_path.name,
+            metrics,
+            excerpts,
+            single_thresh,
+            odd_ratio_thresh,
+            odd_count_thresh,
+            num_split_thresh,
         )
 
         for m, exc in zip(metrics, excerpts, strict=True):
             violates = (
                 m.single_letter_ratio > single_thresh
-                or m.odd_char_ratio > odd_thresh
+                or m.odd_char_ratio > odd_ratio_thresh
+                or m.odd_char_count >= odd_count_thresh
+                or m.number_split_count >= num_split_thresh
             )
             csv_rows.append(
                 {
@@ -166,6 +206,8 @@ def main() -> None:
                     "char_count": m.char_count,
                     "single_letter_ratio": m.single_letter_ratio,
                     "odd_char_ratio": m.odd_char_ratio,
+                    "odd_char_count": m.odd_char_count,
+                    "number_split_count": m.number_split_count,
                     "exceeds_threshold": violates,
                     "excerpt": exc,
                 }

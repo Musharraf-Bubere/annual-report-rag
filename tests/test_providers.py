@@ -139,3 +139,57 @@ def test_l2_normalize() -> None:
     assert pytest.approx(normalized[0], 0.001) == 0.6
     assert pytest.approx(normalized[1], 0.001) == 0.8
     assert l2_normalize([0.0, 0.0]) == [0.0, 0.0]
+
+
+def test_gemini_embed_validation_length_mismatch() -> None:
+    """Verifies that GeminiProvider raises ValueError when returned embeddings count differs from input."""
+    provider = GeminiProvider(
+        api_key="mock_key",
+        embedding_model="gemini-embedding-001",
+        generation_model="gemini-3.5-flash-lite",
+        embedding_dimension=768,
+    )
+
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockEmbedding:
+        values: list[float]
+
+    @dataclass
+    class MockResponse:
+        embeddings: list[MockEmbedding]
+
+    provider.client.models.embed_content = lambda **kwargs: MockResponse(
+        embeddings=[MockEmbedding(values=[0.1] * 768)]
+    )
+
+    with pytest.raises(ValueError, match="Expected 2 embeddings from Gemini, but received 1"):
+        provider.embed(["text1", "text2"])
+
+
+def test_gemini_embed_validation_dimension_mismatch() -> None:
+    """Verifies that GeminiProvider raises ValueError when embedding dimension does not match settings."""
+    from dataclasses import dataclass
+
+    provider = GeminiProvider(
+        api_key="mock_key",
+        embedding_model="gemini-embedding-001",
+        generation_model="gemini-3.5-flash-lite",
+        embedding_dimension=768,
+    )
+
+    @dataclass
+    class MockEmbedding:
+        values: list[float]
+
+    @dataclass
+    class MockResponse:
+        embeddings: list[MockEmbedding]
+
+    provider.client.models.embed_content = lambda **kwargs: MockResponse(
+        embeddings=[MockEmbedding(values=[0.1] * 128)]
+    )
+
+    with pytest.raises(ValueError, match="dimension 128, expected 768"):
+        provider.embed(["text1"])

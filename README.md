@@ -44,19 +44,25 @@ Place your source annual report PDF files inside the `data/raw/` directory (for 
    uv run python scripts/audit_text_quality.py
    ```
 
-2. **Dry-run estimation (no API calls or costs)**:
+2. **Benchmark PDF extractors on flagged pages (offline, zero API costs)**:
+   Compare 5 extraction candidates (`PyMuPDF default`, `PyMuPDF TEXT_INHIBIT_SPACES`, `PyMuPDF words rejoined`, `pypdf`, `pdfminer.six`) on flagged defective pages:
+   ```bash
+   uv run python scripts/compare_extractors.py
+   ```
+
+3. **Dry-run estimation (no API calls or costs)**:
    Parse and chunk documents to preview page counts, chunk counts, estimated embedding calls, and estimated runtime:
    ```bash
    uv run python scripts/ingest.py --dry-run
    ```
 
-3. **Trial run with limited pages**:
+4. **Trial run with limited pages**:
    Test end-to-end embedding on just the first 5 pages of each PDF:
    ```bash
    uv run python scripts/ingest.py --limit-pages 5
    ```
 
-4. **Full ingestion into Chroma vector store**:
+5. **Full ingestion into Chroma vector store**:
    Idempotently embed all new chunks in rate-paced batches (default 20 chunks, max 80 items/min) and persist to ChromaDB:
    ```bash
    uv run python scripts/ingest.py

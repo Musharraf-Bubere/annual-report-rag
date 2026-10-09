@@ -90,3 +90,53 @@ Running the audit across both annual reports (743 pages total) provided clear di
 * **`tcs-ar-26.pdf` (360 pages)**: Heavily affected by font-tracking defects. 31 pages exceeded the single-letter ratio threshold, with styled executive letters reaching up to 46% single-character tokens (pages 8, 9, 22, 25, 28). Numbers were fractured into pieces (`"584, 51 9"` and `"44, 0 0 0 +"`).
 
 Having quantified and cataloged the exact pages and failure modes into `data/processed/text_quality_report.csv`, we can address extraction repairs with targeted verification before doing any real embedding runs.
+
+---
+
+## Phase 2c: Audit Metrics Fix and Extractor Comparison Experiment
+
+### What problem this phase solves
+Our Phase 2b quality audit successfully surfaced severe letter-spacing and split numbers in `tcs-ar-26.pdf`. However, a deeper inspection exposed two critical shortcomings in our quality metrics and an unresolved extraction problem:
+1. **Long-Page Defect Dilution**: TCS Page 8 (the Chairman's letter) contains 41 corrupted glyphs (`"ĐonƐolŝdated ƌevenue oĨ ₹ 26ϳ,021 Đƌoƌe"`), but its total character count was ~9,300. As a result, its `odd_char_ratio` was only $41 / 9300 \approx 0.0044$, slipping far beneath the Phase 2b threshold of 0.05.
+2. **Missing Split Number Metric**: Key financial figures (e.g. `"584, 51 9"`, `"44, 0 0 0 +"`, `"2 0 2 6"`) had digits separated by spaces. The single-letter alphabetic check only looked at letters, completely missing numeric fragmentation.
+3. **Extractor Blindness**: We did not know whether PyMuPDF was fundamentally broken or if other open-source extractors (`pypdf`, `pdfminer.six`) could extract these pages cleanly.
+4. **Vector Store Vulnerability**: If a user switches embedding models (e.g. from `gemini-embedding-001` with 768 dims to another model with 1536 dims), ChromaDB could accept mixed vectors or crash cryptically without warning.
+
+Phase 2c solves this with zero API calls: we fix the audit metrics, conduct an empirical comparison across 5 extraction candidates on all 182 flagged pages, and add strict metadata and dimensionality guards to `GeminiProvider` and `ChromaStore`.
+
+### What we built
+1. **Dual Anomaly Metrics (`ingestion/quality.py`)**:
+   - `odd_char_count`: Absolute count of non-standard characters, flagging pages with $\ge 15$ odd characters regardless of total page length. Lowered default `odd_char_ratio` threshold to 0.002. (TCS Page 8 is now immediately caught by `odd_char_count = 41 >= 15` alone).
+   - `number_split_count`: Detects sequences where single digits are separated by single spaces (`\b\d(?: \d)+\b`), catching `"2 0 2 6"` and `"44, 0 0 0"` while scoring 0 on clean numbers (`"2026"`, `"44,000"`, `"584,519"`).
+2. **Offline Extractor Benchmark Suite (`scripts/compare_extractors.py`)**:
+   Implemented five candidate extractors in modular functions and benchmarked them against all 182 flagged pages:
+   - Candidate 1: PyMuPDF default
+   - Candidate 2: PyMuPDF with `TEXT_INHIBIT_SPACES` flag
+   - Candidate 3: PyMuPDF word tuples re-joined with horizontal gap tolerance (2.0 pts)
+   - Candidate 4: `pypdf`
+   - Candidate 5: `pdfminer.six` with custom `LAParams` (word_margin=0.1, char_margin=2.0)
+3. **Side-by-Side Excerpt Inspector**: Evaluated excerpts across worst pages (TCS 8, 22, 25), testing whether the exact string `"267,021"` could be extracted by any tool.
+4. **Vector Store and Provider Integrity Protections**:
+   - In `store.py`: Embedded model name and dimension are saved into Chroma collection metadata. Reopening an existing collection with mismatched settings immediately raises a `ValueError` prompting the user to run `ingest.py --reset`.
+   - In `gemini.py`: Response embedding vector counts and individual vector dimensions are validated before acceptance.
+
+### How it works in plain English & Benchmark Results
+When `compare_extractors.py` runs, it loads the 182 flagged pages from `text_quality_report.csv` and tests each candidate:
+
+```
+Candidate                                  | Cleaned    | Med Single | Med Odd  | Med Split | Time (s)
+------------------------------------------------------------------------------------------
+PyMuPDF (default)                          | 0/182      | 0.0674     | 0        | 4         | 0.73    
+PyMuPDF (TEXT_INHIBIT_SPACES)              | 79/182     | 0.0344     | 0        | 1         | 0.69    
+PyMuPDF (words rejoined, gap=2.0)          | 57/182     | 0.0463     | 0        | 3         | 0.76    
+pypdf                                      | 9/182      | 0.0670     | 0        | 4         | 12.21   
+pdfminer.six (wm=0.1, cm=2.0)              | 30/182     | 0.0670     | 0        | 5         | 46.46   
+```
+
+Key discoveries:
+* **The Winner**: `PyMuPDF (TEXT_INHIBIT_SPACES)` cleaned **79 of 182** pages, cut the median single-letter ratio in half (from 0.0674 down to 0.0344), and repaired broken numbers (`"584,519"`, `"44,000+"`, `"2026"`)—all in **0.69 seconds** (67x faster than `pdfminer.six`).
+* **The `"267,021"` Mystery on Page 8**: Exact `"267,021"` appeared in **NONE** of the five extractors. Why? In `tcs-ar-26.pdf`, the heading font (`HouschkaRounded-DemiBold`) contains an erroneous ToUnicode CMap table embedded by the document designer: the glyph representing `7` is mapped to Unicode character `0x03F3` (`ϳ`, Greek Small Letter Yot). All text extractors faithfully read the embedded font table and produce `26ϳ,021` (or `cid:1011` in pdfminer). No text extractor can fix this without OCR or domain-specific character replacement heuristics.
+
+### What could go wrong
+* **Residual Table False Positives**: In dense financial tables where single digits appear in adjacent cells (e.g. Infosys subsidiary notes), whitespace cleaning converts table newlines into spaces, triggering split number warnings (`num_split=3-5`). These are false positives caused by table structure rather than broken words.
+* **Corrupted Font CMaps**: When a PDF creator embeds a damaged or incomplete ToUnicode CMap, characters extract as wrong Unicode code points. Standard text extractors cannot deduce the visual glyph shape without an OCR engine like Tesseract.

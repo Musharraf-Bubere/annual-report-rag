@@ -167,3 +167,43 @@ This document captures key design decisions, their rationale, alternatives consi
 * **Choice:** Empirical audit first (`ingestion/quality.py` and `scripts/audit_text_quality.py`).
 * **Reason:** Ad-hoc regex replacements can easily corrupt valid acronyms, equations, and tables if applied blindly. Auditing first provides clear data: Infosys is almost completely clean (P95 single-letter ratio is 8.5%), whereas TCS has 31 severely affected pages (P95 single-letter ratio is 19.5%, reaching up to 46% on letter-spaced executive pages). This isolates the exact nature of the defect for a targeted fix.
 * **Trade-off:** Delays fixing the text extraction to Phase 2c, but ensures any future fix can be measured against a definitive baseline report (`data/processed/text_quality_report.csv`).
+
+---
+
+### Decision 14: Dual Quality Metric Refinement (Absolute Count + Ratio & Split Numbers)
+
+* **Context:** In Phase 2b, `tcs-ar-26` page 8 contained 41 corrupted glyphs (`"ĐonƐolŝdated ƌevenue oĨ ₹ 26ϳ,021 Đƌoƌe"`), but its `odd_char_ratio` scored 0.0044, slipping under the 0.05 threshold because the page had ~9,300 total characters. Furthermore, numbers were split across spaces (`"2 0 2 6"`, `"44, 0 0 0"`).
+* **Options Considered:**
+  1. Only lower `odd_char_ratio_threshold` to 0.002: Catches page 8, but short pages with 1-2 innocent symbols (e.g. bullet points) can easily cross a low ratio threshold.
+  2. Absolute count threshold (`odd_char_count >= 15`) combined with lowered ratio (`odd_char_ratio > 0.002`) and a dedicated split number detector (`\b\d(?: \d)+\b`).
+* **Choice:** Dual threshold (`odd_char_count >= 15` or `odd_char_ratio > 0.002`) plus `number_split_count >= 3`.
+* **Reason:** Long dense pages with high character counts cannot dilute an absolute defect count: 41 corrupted glyphs triggers `odd_char_count` (41 >= 15) instantly. The split number regex precisely targets runs of single digits separated by spaces, completely avoiding false positives on clean numbers (`"2026"`, `"44,000"`, `"584,519"`).
+* **Trade-off:** Multi-column tables with single digits may produce false positive split number counts when newlines are flattened to spaces.
+
+---
+
+### Decision 15: Extractor Evaluation Findings & Recommendation (`pymupdf.TEXT_INHIBIT_SPACES`)
+
+* **Context:** We evaluated 5 extraction candidates on all 182 flagged pages from both PDFs: (1) PyMuPDF default, (2) PyMuPDF with `TEXT_INHIBIT_SPACES`, (3) PyMuPDF "words" re-joined with gap tolerance, (4) `pypdf`, and (5) `pdfminer.six` with custom `LAParams`.
+* **Options Considered:**
+  1. Keep PyMuPDF default: Leaves 182 pages flagged with fragmented words and split numbers.
+  2. `pypdf`: Slow (12.2s for 182 pages), cleaned only 9 pages, and introduced ligature artifacts (e.g. `/A.calt`).
+  3. `pdfminer.six`: Extremely slow (46.5s for 182 pages), cleaned only 30 pages, and severed numbers (e.g. `584, 51`).
+  4. PyMuPDF words re-joined: Cleaned 57 pages, but dropped single-character tokens and punctuation.
+  5. `pymupdf.TEXT_INHIBIT_SPACES`: Cleaned 79 pages in 0.69 seconds, reduced median single-letter ratio from 0.0674 to 0.0344, and healed split numbers (`584,519`, `44,000+`, `2026`).
+* **Choice:** Recommend `PyMuPDF` with `TEXT_INHIBIT_SPACES` as the winning extraction strategy.
+* **Reason:** It runs at native C speed (0.69s), completely prevents MuPDF's heuristic space insertion on tight font tracking, and heals split letters and numbers across styled headings without breaking table layouts or dropping text.
+* **Trade-off:** Font CMap/ToUnicode corruption (such as Greek Yot `ϳ` for digit `7` on page 8) is embedded inside the PDF binary itself and cannot be solved by any text layout engine without OCR or heuristic character-mapping tables.
+
+---
+
+### Decision 16: Guarding Vector Store Integrity via Collection Metadata and Vector Validation
+
+* **Context:** In a production RAG application, switching embedding models (e.g. from `gemini-embedding-001` with 768 dims to a 1536-dim or 3072-dim model) without clearing the database leads to silent vector store corruption or runtime dimension crashes. Similarly, malformed provider responses must not enter the store.
+* **Options Considered:**
+  1. Rely on runtime ChromaDB dimension checks: Chroma will raise a cryptic low-level HNSW dimension error, but provides no user guidance on model name mismatches.
+  2. Silent overwrite or automatic collection purge: Destructive and can silently delete user data on accidental config edits.
+  3. Explicit metadata contract: Store `embedding_model` and `embedding_dimension` in collection metadata. On initialization, validate existing metadata against current settings, raising a descriptive error prompting `--reset` if mismatched. In `GeminiProvider.embed`, strictly validate response length and vector dimensions.
+* **Choice:** Explicit metadata tracking and fail-fast startup validation.
+* **Reason:** Prevents mixing incompatible vector spaces. The user is immediately alerted if their `settings.yaml` model differs from the indexed collection and is instructed to run `scripts/ingest.py --reset`.
+* **Trade-off:** Existing collections created before Phase 2c without metadata will be validated once reset.

@@ -155,14 +155,23 @@ class GeminiProvider(BaseProvider):
             )
         )
 
-        if not response.embeddings:
-            return []
+        raw_embeddings = response.embeddings or []
+        if len(raw_embeddings) != len(texts):
+            raise ValueError(
+                f"Expected {len(texts)} embeddings from Gemini, but received {len(raw_embeddings)}."
+            )
 
-        return [
-            l2_normalize(emb.values)
-            for emb in response.embeddings
-            if emb.values is not None
-        ]
+        vectors: list[list[float]] = []
+        for idx, emb in enumerate(raw_embeddings):
+            if emb.values is None or len(emb.values) != self.embedding_dimension:
+                actual_dim = len(emb.values) if emb.values is not None else 0
+                raise ValueError(
+                    f"Embedding vector at index {idx} has dimension {actual_dim}, "
+                    f"expected {self.embedding_dimension}."
+                )
+            vectors.append(l2_normalize(emb.values))
+
+        return vectors
 
     def generate(self, prompt: str) -> str:
         """Generates a text completion for the prompt using configured generation model."""

@@ -40,7 +40,9 @@ def test_load_default_settings() -> None:
     assert settings.ingestion.min_page_chars == 50
     assert settings.storage.collection_name == "annual_reports"
     assert settings.quality.single_letter_ratio_threshold == 0.15
-    assert settings.quality.odd_char_ratio_threshold == 0.05
+    assert settings.quality.odd_char_ratio_threshold == 0.002
+    assert settings.quality.odd_char_count_threshold == 15
+    assert settings.quality.number_split_threshold == 3
 
 
 def test_missing_config_file_raises_error(tmp_path: Path) -> None:

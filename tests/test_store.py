@@ -70,3 +70,76 @@ def test_chroma_store_reset(tmp_path: Path) -> None:
     store.reset()
     assert store.count() == 0
 
+
+def test_chroma_store_metadata_matching(tmp_path: Path) -> None:
+    """Verifies that opening an existing collection with matching metadata succeeds."""
+    db_path = str(tmp_path / "meta_db")
+    ChromaStore(
+        persist_path=db_path,
+        collection_name="meta_col",
+        embedding_model="model-v1",
+        embedding_dimension=768,
+    )
+
+    # Reopening with identical configuration must succeed
+    reopened = ChromaStore(
+        persist_path=db_path,
+        collection_name="meta_col",
+        embedding_model="model-v1",
+        embedding_dimension=768,
+    )
+    assert reopened.collection.metadata.get("embedding_model") == "model-v1"
+
+
+def test_chroma_store_metadata_mismatch_raises(tmp_path: Path) -> None:
+    """Verifies that opening an existing collection with mismatched settings raises ValueError."""
+    import pytest
+
+    db_path = str(tmp_path / "mismatch_db")
+    ChromaStore(
+        persist_path=db_path,
+        collection_name="mismatch_col",
+        embedding_model="model-v1",
+        embedding_dimension=768,
+    )
+
+    # Mismatched model name
+    with pytest.raises(ValueError, match="Please re-index using --reset"):
+        ChromaStore(
+            persist_path=db_path,
+            collection_name="mismatch_col",
+            embedding_model="model-v2",
+            embedding_dimension=768,
+        )
+
+    # Mismatched dimension
+    with pytest.raises(ValueError, match="Please re-index using --reset"):
+        ChromaStore(
+            persist_path=db_path,
+            collection_name="mismatch_col",
+            embedding_model="model-v1",
+            embedding_dimension=1536,
+        )
+
+
+def test_chroma_store_reset_overrides_mismatch(tmp_path: Path) -> None:
+    """Verifies that reset_existing=True resets mismatched collection without raising error."""
+    db_path = str(tmp_path / "override_db")
+    ChromaStore(
+        persist_path=db_path,
+        collection_name="override_col",
+        embedding_model="model-v1",
+        embedding_dimension=768,
+    )
+
+    # Resetting with new model configuration
+    recreated = ChromaStore(
+        persist_path=db_path,
+        collection_name="override_col",
+        embedding_model="model-v2",
+        embedding_dimension=512,
+        reset_existing=True,
+    )
+    assert recreated.collection.metadata.get("embedding_model") == "model-v2"
+    assert recreated.collection.metadata.get("embedding_dimension") == 512
+

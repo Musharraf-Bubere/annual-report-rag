@@ -122,12 +122,13 @@ def main() -> None:
     store = ChromaStore(
         persist_path=settings.storage.vector_store_path,
         collection_name=settings.storage.collection_name,
+        embedding_model=settings.provider.embedding_model,
+        embedding_dimension=settings.provider.embedding_dimension,
+        reset_existing=args.reset,
     )
 
     if args.reset:
-        print(f"Resetting collection '{settings.storage.collection_name}'...")
-        store.reset()
-        print("Collection reset successfully.")
+        print(f"Collection '{settings.storage.collection_name}' reset successfully.")
 
     provider = get_provider(settings)
     print(f"Indexing {len(pdf_paths)} document(s)...")

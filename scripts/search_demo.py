@@ -29,6 +29,8 @@ def run_search(question: str) -> None:
     store = ChromaStore(
         persist_path=settings.storage.vector_store_path,
         collection_name=settings.storage.collection_name,
+        embedding_model=settings.provider.embedding_model,
+        embedding_dimension=settings.provider.embedding_dimension,
     )
 
     if store.count() == 0:

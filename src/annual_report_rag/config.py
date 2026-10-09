@@ -62,8 +62,10 @@ class StorageConfig:
 class QualityConfig:
     """Holds anomaly thresholds for text quality auditing."""
 
-    single_letter_ratio_threshold: float
-    odd_char_ratio_threshold: float
+    single_letter_ratio_threshold: float = 0.15
+    odd_char_ratio_threshold: float = 0.002
+    odd_char_count_threshold: int = 15
+    number_split_threshold: int = 3
 
 
 @dataclass(frozen=True)
@@ -136,7 +138,13 @@ def parse_quality_config(data: dict[str, Any]) -> QualityConfig:
             data.get("single_letter_ratio_threshold", 0.15)
         ),
         odd_char_ratio_threshold=float(
-            data.get("odd_char_ratio_threshold", 0.05)
+            data.get("odd_char_ratio_threshold", 0.002)
+        ),
+        odd_char_count_threshold=int(
+            data.get("odd_char_count_threshold", 15)
+        ),
+        number_split_threshold=int(
+            data.get("number_split_threshold", 3)
         ),
     )
 

@@ -1,6 +1,7 @@
 """Persistent vector store wrapper around ChromaDB."""
 
 from dataclasses import dataclass
+from typing import Any
 
 import chromadb
 
@@ -24,22 +25,66 @@ class ChromaStore:
         self,
         persist_path: str = "chroma_db",
         collection_name: str = "annual_reports",
+        embedding_model: str | None = None,
+        embedding_dimension: int | None = None,
+        reset_existing: bool = False,
     ) -> None:
         """Initializes persistent Chroma client and ensures collection exists with cosine distance."""
         self.persist_path = persist_path
         self.collection_name = collection_name
+        self.embedding_model = embedding_model
+        self.embedding_dimension = embedding_dimension
         self.client = chromadb.PersistentClient(path=persist_path)
-        self.collection = self.client.get_or_create_collection(
-            name=collection_name,
-            metadata={"hnsw:space": "cosine"},
-        )
+
+        if reset_existing:
+            self.reset()
+        else:
+            metadata: dict[str, Any] = {"hnsw:space": "cosine"}
+            if embedding_model is not None:
+                metadata["embedding_model"] = embedding_model
+            if embedding_dimension is not None:
+                metadata["embedding_dimension"] = embedding_dimension
+
+            self.collection = self.client.get_or_create_collection(
+                name=collection_name,
+                metadata=metadata,
+            )
+            self._validate_metadata()
+
+    def _validate_metadata(self) -> None:
+        """Validates that collection metadata matches current model and dimension settings."""
+        meta = self.collection.metadata or {}
+        stored_model = meta.get("embedding_model")
+        stored_dim = meta.get("embedding_dimension")
+
+        if stored_model and self.embedding_model and stored_model != self.embedding_model:
+            raise ValueError(
+                f"Collection '{self.collection_name}' was indexed with model '{stored_model}', "
+                f"but current setting is '{self.embedding_model}'. "
+                "Please re-index using --reset."
+            )
+        if (
+            stored_dim is not None
+            and self.embedding_dimension is not None
+            and int(stored_dim) != int(self.embedding_dimension)
+        ):
+            raise ValueError(
+                f"Collection '{self.collection_name}' was indexed with dimension {stored_dim}, "
+                f"but current setting is {self.embedding_dimension}. "
+                "Please re-index using --reset."
+            )
 
     def reset(self) -> None:
         """Deletes and recreates the collection, purging all existing chunks."""
         self.client.delete_collection(name=self.collection_name)
+        metadata: dict[str, Any] = {"hnsw:space": "cosine"}
+        if self.embedding_model is not None:
+            metadata["embedding_model"] = self.embedding_model
+        if self.embedding_dimension is not None:
+            metadata["embedding_dimension"] = self.embedding_dimension
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
-            metadata={"hnsw:space": "cosine"},
+            metadata=metadata,
         )
 
     def add_chunks(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
