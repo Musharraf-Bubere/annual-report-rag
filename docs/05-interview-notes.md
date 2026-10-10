@@ -163,3 +163,14 @@ A robust ingestion architecture enforces quality invariants through:
 1. **Deterministic dry-run mode (`--dry-run`)**: Executes the entire loading, cleaning, filtering, and chunking pipeline offline, reporting page methods, degraded counts, chunk counts, and estimated embedding calls/duration.
 2. **Pre-embedding invariant assertions**: The dry-run scans all generated chunks against quality invariants—for example, asserting that exactly **0 chunks** contain characters in the corrupted Unicode range before a single API call is allowed.
 3. **Idempotent checkpointing**: By computing deterministic chunk IDs (`{source}-p{page}-c{chunk_index}`) and checking vector store presence before each batch, runs can be safely interrupted and resumed without duplicating work or embeddings.
+
+---
+
+### Question 22: How do you identify and mitigate false positives in automated text cleaning filters?
+**Answer:**
+Heuristic cleaning rules (such as dropping tokens based on Unicode blocks) frequently produce false positives on legitimate domain vocabulary: multi-national brand names, foreign executive names, or loanwords often contain non-ASCII characters (e.g. `"Mondelēz"` with `ē` `U+0113`). A naive filter destroys valid entity names, harming downstream question-answering.
+A production RAG pipeline prevents false positives through a three-layer defense:
+1. **Offline Diagnostic Auditing**: Run a diagnostic script (`diagnose_dropped_tokens.py`) that exports every dropped token and its surrounding page metrics to an inspection CSV (`dropped_tokens_report.csv`). This immediately surfaces legitimate words like `"Mondelēz"` before changes are deployed.
+2. **Page-Level Anomaly Gating**: Do not filter tokens unconditionally. Gate token filtering on page-level defect density (e.g. `odd_char_count >= 15`). An isolated foreign name on a clean page has a low score (e.g. 6 odd characters) and is left untouched, eliminating false positives on 99% of pages.
+3. **Configurable Token Allowlisting (`keep_tokens`)**: Maintain an explicit list in configuration for verified legitimate entities. Even on a heavily degraded page that exceeds the defect threshold, allowlisted tokens are strictly preserved.
+4. **Informative Breakdown Reporting**: Rather than asserting an inflexible zero-character invariant across all chunks, report the exact chunks, pages, and Unicode characters retained, giving full transparency to engineering teams.

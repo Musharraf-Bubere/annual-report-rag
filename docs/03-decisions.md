@@ -223,16 +223,18 @@ This document captures key design decisions, their rationale, alternatives consi
 
 ---
 
-### Decision 18: Dropping Corrupted Font Tokens Instead of Hallucinating Characters
+### Decision 18: Dropping Corrupted Font Tokens with Page-Level Anomaly Gating and Allowlisting
 
-* **Context:** 31 pages of TCS suffer from irrecoverable font CMap encoding defects (e.g. `"ĐonƐolŝdated ƌevenue oĨ ₹ 26ϳ,021 Đƌoƌe"` on page 8). The font `HouschkaRounded-DemiBold` maps visual glyphs to incorrect Unicode points in the Latin Extended and Greek blocks (`\u0100` to `\u052F`).
+* **Context:** In Phase 2d, initial token filtering dropped tokens containing characters in Unicode range `\u0100` to `\u052F` (Latin Extended and Greek blocks) across all pages. However, an empirical audit (`dropped_tokens_report.csv`) revealed a critical false positive: on `infosys-ar-26` page 5, the filter dropped 6 occurrences of the legitimate client brand name `"Mondelēz"` because `ē` is `U+0113`. Furthermore, filtering any page with a single character in that range marked 31 TCS pages and 1 Infosys page as degraded, violating the requirement that only pages with `odd_char_count >= odd_char_count_threshold` (17 pages in TCS) be filtered.
 * **Options Considered:**
-  1. Heuristic regex character replacement: Substitute `ϳ` with `7`, `Đ` with `C`, etc.
-  2. Ingest corrupted text as-is into ChromaDB.
-  3. Drop whitespace-separated tokens containing characters in `\u0100` to `\u052F`, tag pages as `text_quality = "degraded"`, record degraded audit records, and assert zero corrupted chunks.
-* **Choice:** Drop corrupted tokens and tag metadata as `"degraded"`.
-* **Reason:** In financial RAG, hallucinating or guessing corrupted numbers is dangerous—a misidentified digit or financial metric corrupts balance sheets and executive letters. Ingesting them pollutes the vector index with non-English subwords. Dropping the corrupted tokens (`ĐonƐolŝdated`, `ƌevenue`, `26ϳ,021`) preserves clean surrounding text (e.g. Chairman Chandrasekaran's AI letter) without poisoning embedding space or search results. The `"degraded"` metadata enables downstream filtering and citation warnings.
-* **Trade-off:** Specific figures from those 31 pages are omitted from text chunks until visual OCR is introduced.
+  1. Blanket Unicode range filter across all pages: Eliminates all corrupted glyphs, but destroys legitimate multi-national brand names, foreign executive names, and accented words (`Mondelēz`).
+  2. Heuristic regex character replacement: Substitute `ϳ` with `7`, `Đ` with `C`, etc. Unreliable, domain-fragile, and risks corrupting financial digits.
+  3. Two-stage defense: Page-level defect gating + token allowlisting:
+     - **Stage 1 (Page-level gating)**: Only evaluate token filtering on pages where `odd_char_count >= odd_char_count_threshold` (default 15). Pages below this threshold are left completely untouched and marked `"clean"`.
+     - **Stage 2 (Token allowlist)**: Add a configurable `keep_tokens` list in `settings.yaml` (containing verified legitimate names like `"Mondelēz"`). Even on pages that cross the anomaly threshold, allowlisted tokens are strictly preserved.
+* **Choice:** Two-stage defense: Gated filtering on `odd_char_count >= 15` combined with `keep_tokens` allowlist.
+* **Reason:** In financial RAG, data extraction must avoid false positives on legitimate business terminology while protecting semantic embeddings from font corruption. Infosys page 5 (`odd_char_count = 6 < 15`) remains completely clean with `"Mondelēz"` preserved. Exactly 17 severely corrupted TCS pages (`odd_char_count >= 15`) have their corrupted tokens (`ĐonƐolŝdated`, `ƌevenue`, `26ϳ,021`) filtered out and are cleanly tagged as `"degraded"`.
+* **Trade-off:** 14 TCS pages with low-level font defects (`odd_char_count` between 1 and 13) are left untouched and marked clean; their minor corrupted symbols remain in chunks until OCR is introduced or a lower threshold is configured.
 
 ---
 

@@ -32,3 +32,9 @@ quality:
   number_split_threshold: 3           # Flag pages with 3 or more split number sequences (e.g. "2 0 2 6")
   corrupted_glyph_range_start: "\u0100" # Start of unicode range for corrupted font glyphs (Latin Ext, Greek, Cyrillic)
   corrupted_glyph_range_end: "\u052F"   # End of unicode range for corrupted font glyphs
+  # Legitimate names/words containing characters in the corrupted Unicode range
+  # that must never be dropped by the token filter, even on degraded pages.
+  # Defaults to empty ([]) when commented or not specified.
+  keep_tokens:
+    - "Mondelēz"
+

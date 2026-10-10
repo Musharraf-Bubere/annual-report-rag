@@ -196,3 +196,65 @@ Key outcomes on real documents:
 ### What could go wrong
 * **Omission of Corrupted Figures**: Until visual OCR is implemented in a future phase, specific revenue and headcount figures that exclusively appeared under corrupted font headings (such as the headline ₹ 267,021 crore on TCS page 8) are excluded from text chunks to prevent hallucination.
 * **Non-English Diacritics in Multinational Reports**: Company names or foreign subsidiaries with Latin Extended characters (e.g. `Mondelēz`) will have those specific tokens dropped by the unicode filter. This is an intentional trade-off to ensure 100% clean vectors in standard corporate disclosures.
+
+---
+
+## Phase 2d.1: False-Positive Remediation in Corrupted Token Filter
+
+### The problem this phase solves
+In Phase 2d, the corrupted-token filter operated unconditionally on any page containing characters in `\u0100` to `\u052F`. An empirical inspection revealed two significant defects in this initial implementation:
+1. **False Positive on Real Brand Names**: On `infosys-ar-26` page 5, the filter dropped 6 tokens of `"Mondelēz"` because `ē` is Unicode `U+0113`. Mondelēz International is a major real-world client featured in Infosys case studies, not font corruption.
+2. **Threshold Violation**: The Phase 2d specification defined degraded pages as those with `odd_char_count >= 15` (which applies to exactly 17 pages in TCS and 0 in Infosys). However, because the filter ran unconditionally on any page with even a single character in the range, 31 TCS pages and 1 Infosys page were tagged as degraded.
+
+### What we built
+1. **Diagnostic Audit (`scripts/diagnose_dropped_tokens.py` -> `data/processed/dropped_tokens_report.csv`)**:
+   - Audited all 32 pages that dropped tokens.
+   - Confirmed that `infosys-ar-26` page 5 had only 6 odd characters (all legitimate `"Mondelēz"` tokens).
+   - Confirmed that of the 31 TCS pages, exactly 17 had `odd_char_count >= 15` (severe font corruption), while 14 pages had `odd_char_count < 15` (ranging from 1 to 13 odd characters, e.g. single occurrences of `Đƌoƌe` or Greek symbols).
+2. **Page-Level Anomaly Gating (`ingestion/loader.py`)**:
+   - Refactored `assess_and_filter_page` so that token filtering only runs on pages with `odd_char_count >= odd_char_count_threshold` (15).
+   - Pages below 15 are left completely untouched and marked `text_quality = "clean"`. Infosys page 5 is now 100% clean with all `"Mondelēz"` tokens intact.
+3. **Allowlist Configuration (`settings.yaml`, `config.py`)**:
+   - Added `quality.keep_tokens` (default empty list, populated with `["Mondelēz"]`).
+   - `filter_corrupted_tokens` checks whether a token (or its punctuation-stripped form) is in `keep_tokens`. Allowlisted words are never dropped, even if present on a page above the threshold.
+4. **Permissive Range Reporting in Dry-Run (`scripts/ingest.py`)**:
+   - Replaced the brittle `assert corrupted_count == 0` check with an informative breakdown reporting total chunks containing characters in `\u0100` to `\u052F`, grouped by document, page number, and specific Unicode code points.
+
+### How it works in plain English & Real-World Numbers
+When `ingest.py --dry-run` executes with Phase 2d.1:
+
+```
+--- Dry-Run Summary ---
+Total PDFs:               2
+Total pages read:         741 (2 empty pages skipped in Infosys)
+Total pages skipped:      2
+Extraction methods:       default: 706, inhibit_spaces: 35
+Total degraded pages:     17 (0 in Infosys, 17 in TCS)
+Total chunks created:     3109
+Chunks with U+0100-U+052F:19
+  - infosys-ar-26 page 5: '\u0113' (U+0113)
+  - tcs-ar-26 page 9: '\u0110' (U+0110), '\u0150' (U+0150), '\u015d' (U+015D), '\u0175' (U+0175), '\u018c' (U+018C), '\u01c6' (U+01C6), '\u0358' (U+0358)
+  - tcs-ar-26 page 20: '\u0110' (U+0110), '\u0150' (U+0150), '\u016f' (U+016F), '\u0356' (U+0356)
+  - tcs-ar-26 page 26: '\u0110' (U+0110), '\u018c' (U+018C), '\u03f5' (U+03F5)
+  - tcs-ar-26 page 28: '\u018c' (U+018C)
+  - tcs-ar-26 page 29: '\u0388' (U+0388), '\u0389' (U+0389)
+  - tcs-ar-26 page 45: '\u010f' (U+010F), '\u0110' (U+0110), '\u01c1' (U+01C1), '\u03f0' (U+03F0), '\u03f1' (U+03F1)
+  - tcs-ar-26 page 90: '\u016c' (U+016C), '\u016f' (U+016F), '\u037e' (U+037E), '\u037f' (U+037F)
+  - tcs-ar-26 page 106: '\u0372' (U+0372), '\u03c7' (U+03C7), '\u03ee' (U+03EE), '\u03f1' (U+03F1)
+  - tcs-ar-26 page 113: '\u0110' (U+0110), '\u017d' (U+017D), '\u018c' (U+018C), '\u037e' (U+037E), '\u037f' (U+037F)
+  - tcs-ar-26 page 115: '\u0110' (U+0110), '\u017d' (U+017D), '\u018c' (U+018C), '\u037e' (U+037E), '\u037f' (U+037F)
+  - tcs-ar-26 page 135: '\u03c6' (U+03C6)
+  - tcs-ar-26 page 143: '\u0110' (U+0110), '\u0150' (U+0150), '\u01c0' (U+01C0), '\u0374' (U+0374), '\u0398' (U+0398), '\u03c5' (U+03C5)
+  - tcs-ar-26 page 149: '\u0110' (U+0110), '\u015d' (U+015D), '\u0176' (U+0176), '\u017d' (U+017D), '\u018c' (U+018C), '\u037e' (U+037E), '\u037f' (U+037F)
+  - tcs-ar-26 page 150: '\u0110' (U+0110), '\u015d' (U+015D), '\u0176' (U+0176), '\u017d' (U+017D), '\u018c' (U+018C), '\u037e' (U+037E), '\u037f' (U+037F)
+Total est. API calls:     156 (batch size 20)
+Est. embedding time:      ~38.9 min (at 80 items/min limit)
+```
+
+Key outcomes:
+* **Infosys is 100% Clean**: 0 degraded pages. Brand name `"Mondelēz"` is preserved across all chunks.
+* **Exact TCS Degraded Count**: Exactly 17 pages are degraded and logged in `data/processed/degraded_pages.csv`.
+* **Safe Permissiveness**: 19 chunks contain characters in `\u0100-U+052F` across 15 pages (1 in Infosys for Mondelēz, and 14 in TCS for pages with minor anomalies below the 15-character threshold).
+
+### What could go wrong
+* **Minor Residual Font Defects Below Threshold**: The 14 TCS pages with 1–13 odd characters contain isolated corrupted tokens (e.g. `pƌoĐuƌeŵent` on page 9, `COφ` on page 135). Because their page-level anomaly score is below 15, they remain in chunks rather than being dropped. This prevents over-filtering but leaves minor typographical artifacts in those 14 pages until OCR is added.

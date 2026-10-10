@@ -2,6 +2,7 @@
 
 import csv
 import re
+import string
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,15 +31,20 @@ def filter_corrupted_tokens(
     text: str,
     range_start: str = "\u0100",
     range_end: str = "\u052F",
+    keep_tokens: tuple[str, ...] | set[str] = (),
 ) -> tuple[str, int]:
-    """Drops whitespace-separated tokens containing characters in corrupted Unicode range."""
+    """Drops whitespace-separated tokens in Unicode range, preserving keep_tokens."""
     if not text:
         return "", 0
+    keep_set = set(keep_tokens)
     tokens = text.split()
     clean_tokens: list[str] = []
     dropped_count = 0
     for token in tokens:
-        if any(range_start <= ch <= range_end for ch in token):
+        stripped = token.strip(string.punctuation)
+        if token in keep_set or stripped in keep_set:
+            clean_tokens.append(token)
+        elif any(range_start <= ch <= range_end for ch in token):
             dropped_count += 1
         else:
             clean_tokens.append(token)
@@ -155,15 +161,22 @@ def assess_and_filter_page(
     page_num: int,
     cleaned: str,
     raw: str,
+    odd_count_threshold: int = 15,
     glyph_range_start: str = "\u0100",
     glyph_range_end: str = "\u052F",
+    keep_tokens: tuple[str, ...] | set[str] = (),
 ) -> tuple[str, str, dict[str, object] | None]:
-    """Drops corrupted tokens containing glyphs in range, returning quality status and record."""
-    filtered, dropped = filter_corrupted_tokens(cleaned, glyph_range_start, glyph_range_end)
+    """Filters corrupted tokens on pages meeting odd_char_count threshold, logging defects."""
+    metrics = assess_page_quality(source, page_num, cleaned, raw_text=raw)
+    if metrics.odd_char_count < odd_count_threshold:
+        return cleaned, "clean", None
+
+    filtered, dropped = filter_corrupted_tokens(
+        cleaned, glyph_range_start, glyph_range_end, keep_tokens=keep_tokens
+    )
     if dropped == 0:
         return cleaned, "clean", None
 
-    metrics = assess_page_quality(source, page_num, cleaned, raw_text=raw)
     record: dict[str, object] = {
         "pdf_name": source,
         "page": page_num,
@@ -180,8 +193,10 @@ def load_pdf(
     limit_pages: int | None = None,
     single_threshold: float = 0.15,
     number_split_threshold: int = 3,
+    odd_count_threshold: int = 15,
     glyph_range_start: str = "\u0100",
     glyph_range_end: str = "\u052F",
+    keep_tokens: tuple[str, ...] | set[str] = (),
     degraded_log_path: Path | str | None = "data/processed/degraded_pages.csv",
 ) -> list[LoadedPage]:
     """Extracts text using best-of extraction, filters corrupted glyph tokens, and logs defects."""
@@ -205,8 +220,14 @@ def load_pdf(
             continue
 
         cleaned, quality, record = assess_and_filter_page(
-            source, page_num, cleaned, raw,
-            glyph_range_start, glyph_range_end
+            source,
+            page_num,
+            cleaned,
+            raw,
+            odd_count_threshold=odd_count_threshold,
+            glyph_range_start=glyph_range_start,
+            glyph_range_end=glyph_range_end,
+            keep_tokens=keep_tokens,
         )
         if record:
             degraded_records.append(record)

@@ -68,6 +68,7 @@ class QualityConfig:
     number_split_threshold: int = 3
     corrupted_glyph_range_start: str = "\u0100"
     corrupted_glyph_range_end: str = "\u052F"
+    keep_tokens: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,10 @@ def parse_storage_config(data: dict[str, Any]) -> StorageConfig:
 
 def parse_quality_config(data: dict[str, Any]) -> QualityConfig:
     """Parses text quality thresholds into a typed QualityConfig instance."""
+    raw_keep = data.get("keep_tokens", [])
+    keep_tokens = (
+        tuple(str(t) for t in raw_keep) if isinstance(raw_keep, list) else ()
+    )
     return QualityConfig(
         single_letter_ratio_threshold=float(
             data.get("single_letter_ratio_threshold", 0.15)
@@ -154,6 +159,7 @@ def parse_quality_config(data: dict[str, Any]) -> QualityConfig:
         corrupted_glyph_range_end=str(
             data.get("corrupted_glyph_range_end", "\u052F")
         ),
+        keep_tokens=keep_tokens,
     )
 
 

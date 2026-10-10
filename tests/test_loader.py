@@ -5,6 +5,7 @@ from pathlib import Path
 import pymupdf
 
 from annual_report_rag.ingestion.loader import (
+    assess_and_filter_page,
     choose_better_extraction,
     clean_text,
     filter_corrupted_tokens,
@@ -150,3 +151,58 @@ def test_load_pdf_quality_metadata_and_degraded_logging(tmp_path: Path) -> None:
         # Corrupted tokens were filtered out; no corrupted glyphs remain in text
         assert all("\u0100" > ch or ch > "\u052F" for ch in loaded[1].text)
         assert csv_path.exists()
+
+
+def test_filter_corrupted_tokens_keep_tokens() -> None:
+    """Verifies that allowlisted keep_tokens are preserved while corrupted tokens are dropped."""
+    text = "Mondelēz reported strong revenue with ĐonƐolŝdated balance sheets."
+    # Without allowlist: both Mondelēz (ē is U+0113) and ĐonƐolŝdated are dropped
+    no_allow, dropped_all = filter_corrupted_tokens(text)
+    assert dropped_all == 2
+    assert "Mondelēz" not in no_allow
+    assert "ĐonƐolŝdated" not in no_allow
+
+    # With allowlist: Mondelēz is preserved, ĐonƐolŝdated is dropped
+    with_allow, dropped_corrupted = filter_corrupted_tokens(
+        text, keep_tokens=("Mondelēz",)
+    )
+    assert dropped_corrupted == 1
+    assert "Mondelēz" in with_allow
+    assert "ĐonƐolŝdated" not in with_allow
+
+
+def test_page_below_threshold_stays_clean() -> None:
+    """Verifies that a page with odd characters below the threshold is left untouched and clean."""
+    text = "Mondelēz International establishes an end-to-end traceability reporting capability."
+    # odd_char_count is 1 (ē is U+0113), well below threshold 15
+    cleaned, quality, record = assess_and_filter_page(
+        source="infosys-ar-26",
+        page_num=5,
+        cleaned=text,
+        raw=text,
+        odd_count_threshold=15,
+        keep_tokens=("Mondelēz",),
+    )
+    assert quality == "clean"
+    assert record is None
+    assert cleaned == text  # Completely untouched
+
+
+def test_page_above_threshold_drops_corrupted_and_retains_allowlisted() -> None:
+    """Verifies that a page above threshold drops corrupted tokens but retains allowlisted names."""
+    corrupted_part = "ĐonƐolŝdated ƌevenue oĨ 26ϳ,021 Đƌoƌe " * 4
+    text = f"Mondelēz announced that {corrupted_part}"
+    cleaned, quality, record = assess_and_filter_page(
+        source="tcs-ar-26",
+        page_num=8,
+        cleaned=text,
+        raw=text,
+        odd_count_threshold=15,
+        keep_tokens=("Mondelēz",),
+    )
+    assert quality == "degraded"
+    assert record is not None
+    assert record["dropped_tokens"] > 0
+    assert "Mondelēz" in cleaned
+    assert "ĐonƐolŝdated" not in cleaned
+    assert "ƌevenue" not in cleaned

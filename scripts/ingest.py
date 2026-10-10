@@ -68,8 +68,10 @@ def execute_dry_run(
             limit_pages=limit_pages,
             single_threshold=settings.quality.single_letter_ratio_threshold,
             number_split_threshold=settings.quality.number_split_threshold,
+            odd_count_threshold=settings.quality.odd_char_count_threshold,
             glyph_range_start=settings.quality.corrupted_glyph_range_start,
             glyph_range_end=settings.quality.corrupted_glyph_range_end,
+            keep_tokens=settings.quality.keep_tokens,
         )
         skipped = examined - len(pages)
         chunks = chunk_pages(
@@ -104,13 +106,14 @@ def execute_dry_run(
         total_degraded_pages += n_degraded
         total_chunks += len(chunks)
 
-    # Verify zero chunks contain characters in the corrupted Unicode range
+    # Inspect chunks containing characters in U+0100-U+052F
     r_start = settings.quality.corrupted_glyph_range_start
     r_end = settings.quality.corrupted_glyph_range_end
-    corrupted_count = sum(
-        1 for c in all_chunks if any(r_start <= ch <= r_end for ch in c.text)
-    )
-    assert corrupted_count == 0, f"Found {corrupted_count} chunks with corrupted glyphs!"
+    chunks_with_range_chars: list[tuple[str, int, list[str]]] = []
+    for c in all_chunks:
+        chars = sorted({ch for ch in c.text if r_start <= ch <= r_end})
+        if chars:
+            chunks_with_range_chars.append((c.source, c.page, chars))
 
     total_api_calls = (
         math.ceil(total_chunks / batch_size) if total_chunks > 0 else 0
@@ -124,7 +127,16 @@ def execute_dry_run(
     print(f"Extraction methods:       default: {total_default_pages}, inhibit_spaces: {total_inhibit_pages}")
     print(f"Total degraded pages:     {total_degraded_pages}")
     print(f"Total chunks created:     {total_chunks}")
-    print(f"Corrupted glyph chunks:   0 (verified none in range \\u{ord(r_start):04x}-\\u{ord(r_end):04x})")
+    print(f"Chunks with U+0100-U+052F:{len(chunks_with_range_chars)}")
+    if chunks_with_range_chars:
+        page_chars: dict[tuple[str, int], set[str]] = {}
+        for src, pg, chs in chunks_with_range_chars:
+            page_chars.setdefault((src, pg), set()).update(chs)
+        for (src, pg), chs in sorted(page_chars.items()):
+            formatted_chars = ", ".join(
+                f"{c!a} (U+{ord(c):04X})" for c in sorted(chs)
+            )
+            print(f"  - {src} page {pg}: {formatted_chars}")
     print(
         f"Total est. API calls:     {total_api_calls} (batch size {batch_size})"
     )

@@ -45,6 +45,7 @@ def test_load_default_settings() -> None:
     assert settings.quality.number_split_threshold == 3
     assert settings.quality.corrupted_glyph_range_start == "\u0100"
     assert settings.quality.corrupted_glyph_range_end == "\u052F"
+    assert settings.quality.keep_tokens == ("Mondelēz",)
 
 
 def test_missing_config_file_raises_error(tmp_path: Path) -> None:

@@ -88,9 +88,9 @@ Corporate annual reports frequently employ stylized typography, custom subsetted
 | **Pages Loaded ($\ge 50$ chars)** | 381 | 360 | 741 |
 | **Default Extraction Pages** | 381 (100%) | 325 (90.3%) | 706 (95.3%) |
 | **Inhibit Spaces Pages** | 0 (0.0%) | 35 (9.7%) | 35 (4.7%) |
-| **Degraded Quality Pages** | 1 (0.3%) | 31 (8.6%) | 32 (4.3%) |
+| **Degraded Quality Pages** | 0 (0.0%) | 17 (4.7%) | 17 (2.3%) |
 | **Total Chunks Generated** | 1,684 | 1,425 | 3,109 |
-| **Corrupted Glyph Chunks** | 0 (0.0%) | 0 (0.0%) | **0 (0.0%)** |
+| **Chunks with U+0100-U+052F** | 1 (0.06%) | 18 (1.26%) | 19 (0.61%) |
 
 ### Specific Quality Findings
 
@@ -99,10 +99,11 @@ Corporate annual reports frequently employ stylized typography, custom subsetted
    - Our **per-page best-of extractor** automatically routes these 35 pages to `PyMuPDF` with `TEXT_INHIBIT_SPACES`, healing them into `"Fortune Magazine"`, `"584,519"`, and `"44,000+"`.
    - The other 706 pages remain on standard default extraction, protecting clean pages from word-gluing regressions.
 
-2. **Irrecoverable Font CMap Corruption (Filtered & Degraded)**:
-   - 31 TCS pages (e.g. pages 8, 22, 23, 24, 36, 37, 48, 51, 56, 58, 59, 69, 70, 83, 90, 106, 113, 115, 130, 135, 143, 149, 150, 170, 173) contain irrecoverable font encoding defects in the embedded font `HouschkaRounded-DemiBold`. Visual glyphs map to incorrect Unicode points in the Latin Extended and Greek blocks (`\u0100` to `\u052F`, such as Greek Yot `ϳ` for digit `7`, and `Đ` for `C`).
-   - Rather than guessing digits or poisoning vector embeddings, tokens containing characters in this range are dropped, the pages are marked with chunk metadata `text_quality = "degraded"`, and defect details are logged to `data/processed/degraded_pages.csv`. Surrounding clean text (such as executive commentary) remains intact, with **zero corrupted glyphs** entering vector storage.
-   - Infosys had 1 degraded page (page 5), where the accented French corporate name `"Mondelēz"` contained the macron character `ē` (`\u0113`); 6 brand tokens were dropped, leaving 3,001 clean characters.
+2. **Irrecoverable Font CMap Corruption (Filtered & Gated)**:
+   - 17 TCS pages (Pages 8, 22, 23, 24, 36, 37, 48, 51, 56, 58, 59, 69, 70, 83, 130, 170, 173) contain severe font encoding defects (`odd_char_count >= 15`) in the embedded font `HouschkaRounded-DemiBold`. Visual glyphs map to incorrect Unicode points in the Latin Extended and Greek blocks (`\u0100` to `\u052F`, such as Greek Yot `ϳ` for digit `7`, and `Đ` for `C`).
+   - On these 17 pages, corrupted tokens are filtered out, the chunks are marked `text_quality = "degraded"`, and defect details are logged to `data/processed/degraded_pages.csv`. Surrounding clean text (such as Chairman Chandrasekaran's letter on AI) remains intact.
+   - **Allowlisting & False Positive Prevention**: On `infosys-ar-26` page 5, the client brand name `"Mondelēz"` contains the accented character `ē` (`\u0113`). Because page 5 has only 6 odd characters ($< 15$), it is left untouched and marked `"clean"`. Furthermore, `"Mondelēz"` is allowlisted in `settings.yaml` under `quality.keep_tokens` so that it is never dropped even on degraded pages.
+   - **Residual Characters Below Threshold**: 14 TCS pages have minor font artifacts below the threshold (1 to 13 odd characters, appearing in 18 chunks) and remain marked `"clean"`, avoiding over-filtering while isolating major defects.
 
 3. **Visual OCR Deferred**:
-   - Visual OCR (e.g. Tesseract) to reconstruct headline figures from the 32 degraded pages is deferred to a future phase to maintain a lean, high-throughput native extraction pipeline for the 95.8% clean corpus.
+   - Visual OCR (e.g. Tesseract) to reconstruct headline figures from the 17 degraded pages is deferred to a future phase to maintain a lean, high-throughput native extraction pipeline for the 97.7% clean corpus.
