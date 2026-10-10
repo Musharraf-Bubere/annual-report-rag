@@ -61,3 +61,21 @@ def test_stable_ids() -> None:
         assert chunk.id == f"tcs-p42-c{idx}"
         assert chunk.chunk_index == idx
         assert chunk.id == chunks2[idx].id
+
+
+def test_chunks_inherit_extraction_method_and_quality() -> None:
+    """Verifies that generated chunks retain extraction_method and text_quality from the page."""
+    page = LoadedPage(
+        source="tcs-ar-26",
+        page=22,
+        text="Awards and accolades for excellence in enterprise software delivery.",
+        extraction_method="inhibit_spaces",
+        text_quality="degraded",
+    )
+    chunks = chunk_page(page, chunk_size=50, chunk_overlap=10)
+    assert len(chunks) > 0
+    for chunk in chunks:
+        assert chunk.extraction_method == "inhibit_spaces"
+        assert chunk.text_quality == "degraded"
+        assert chunk.source == "tcs-ar-26"
+        assert chunk.page == 22

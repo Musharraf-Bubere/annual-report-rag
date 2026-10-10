@@ -54,13 +54,25 @@ def test_clean_numbers_not_counted_as_split() -> None:
     assert count == 0
 
 
-def test_split_numbers_detected() -> None:
-    """Verifies that sequences of single digits separated by spaces are correctly detected."""
-    split_sample = (
-        "In fiscal 2 0 2 6, headcount was 44, 0 0 0 + and shares rose to 1 9 9."
-    )
-    count = compute_number_split_count(split_sample)
-    assert count == 3
+def test_table_sample_with_one_digit_per_line_scores_zero() -> None:
+    """Verifies that table cells with one digit per line do not count as split numbers."""
+    table_sample = "Notes to Accounts\n1\n2\n3\n4\n5\nTotal\n15"
+    assert compute_number_split_count(table_sample) == 0
+
+
+def test_specific_split_numbers_flagged() -> None:
+    """Verifies that '2 0 2 6' and '44, 0 0 0' are flagged as split numbers."""
+    assert compute_number_split_count("In fiscal 2 0 2 6") == 1
+    assert compute_number_split_count("Fresher hiring: 44, 0 0 0 +") == 1
+    assert compute_number_split_count("10 20 30") == 0
+
+
+def test_assess_page_quality_with_raw_text() -> None:
+    """Verifies that assess_page_quality uses raw_text for newline-aware split number evaluation."""
+    raw = "Item\n1\n2\n3\n4"
+    cleaned = "Item 1 2 3 4"
+    metrics = assess_page_quality("doc", 1, cleaned, raw_text=raw)
+    assert metrics.number_split_count == 0
 
 
 def test_page_8_flagged_by_odd_char_count_alone() -> None:

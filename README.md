@@ -76,4 +76,33 @@ Once documents are indexed, run a manual similarity search against the vector st
 ```bash
 uv run python scripts/search_demo.py "What was the total revenue growth?"
 ```
-This embeds your question with retrieval query optimization, queries Chroma using cosine similarity, and displays top-$k$ matches with page numbers, similarity scores, and excerpt previews.
+This embeds your question with retrieval query optimization, queries Chroma using cosine similarity, and displays top-$k$ matches with page numbers, similarity scores, extraction methods, quality status, and excerpt previews.
+
+## Known data quality issues
+
+Corporate annual reports frequently employ stylized typography, custom subsetted fonts, and complex multi-column layouts that introduce extraction defects. Our ingestion pipeline includes an automated quality auditor (`scripts/audit_text_quality.py`) and a regression safety harness (`scripts/check_inhibit_regression.py`). Current corpus metrics across 743 examined pages (741 loaded, 2 empty skipped in Infosys):
+
+| Metric | Infosys (`infosys-ar-26.pdf`) | TCS (`tcs-ar-26.pdf`) | Total Corpus |
+| :--- | :--- | :--- | :--- |
+| **Total Pages Examined** | 383 | 360 | 743 |
+| **Pages Loaded ($\ge 50$ chars)** | 381 | 360 | 741 |
+| **Default Extraction Pages** | 381 (100%) | 325 (90.3%) | 706 (95.3%) |
+| **Inhibit Spaces Pages** | 0 (0.0%) | 35 (9.7%) | 35 (4.7%) |
+| **Degraded Quality Pages** | 1 (0.3%) | 31 (8.6%) | 32 (4.3%) |
+| **Total Chunks Generated** | 1,684 | 1,425 | 3,109 |
+| **Corrupted Glyph Chunks** | 0 (0.0%) | 0 (0.0%) | **0 (0.0%)** |
+
+### Specific Quality Findings
+
+1. **Letter-Spaced Words and Split Numbers (Healed)**:
+   - On 35 TCS pages (e.g. pages 22, 25), styled section headings had words spaced into single letters (e.g. `"F ortune M ag az i ne"`) and split numbers (e.g. `"584, 51 9"`, `"44, 0 0 0 +"`).
+   - Our **per-page best-of extractor** automatically routes these 35 pages to `PyMuPDF` with `TEXT_INHIBIT_SPACES`, healing them into `"Fortune Magazine"`, `"584,519"`, and `"44,000+"`.
+   - The other 706 pages remain on standard default extraction, protecting clean pages from word-gluing regressions.
+
+2. **Irrecoverable Font CMap Corruption (Filtered & Degraded)**:
+   - 31 TCS pages (e.g. pages 8, 22, 23, 24, 36, 37, 48, 51, 56, 58, 59, 69, 70, 83, 90, 106, 113, 115, 130, 135, 143, 149, 150, 170, 173) contain irrecoverable font encoding defects in the embedded font `HouschkaRounded-DemiBold`. Visual glyphs map to incorrect Unicode points in the Latin Extended and Greek blocks (`\u0100` to `\u052F`, such as Greek Yot `ϳ` for digit `7`, and `Đ` for `C`).
+   - Rather than guessing digits or poisoning vector embeddings, tokens containing characters in this range are dropped, the pages are marked with chunk metadata `text_quality = "degraded"`, and defect details are logged to `data/processed/degraded_pages.csv`. Surrounding clean text (such as executive commentary) remains intact, with **zero corrupted glyphs** entering vector storage.
+   - Infosys had 1 degraded page (page 5), where the accented French corporate name `"Mondelēz"` contained the macron character `ē` (`\u0113`); 6 brand tokens were dropped, leaving 3,001 clean characters.
+
+3. **Visual OCR Deferred**:
+   - Visual OCR (e.g. Tesseract) to reconstruct headline figures from the 32 degraded pages is deferred to a future phase to maintain a lean, high-throughput native extraction pipeline for the 95.8% clean corpus.

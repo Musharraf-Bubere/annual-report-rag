@@ -49,7 +49,10 @@ def run_search(question: str) -> None:
 
     for i, res in enumerate(results, 1):
         snippet = res.text[:200].replace("\n", " ")
-        print(f"[{i}] Source: {res.source} | Page: {res.page} | Score: {res.score}")
+        print(
+            f"[{i}] Source: {res.source} | Page: {res.page} | Score: {res.score} | "
+            f"Method: {res.extraction_method} | Quality: {res.text_quality}"
+        )
         print(f"    Excerpt: \"{snippet}...\"\n")
 
 

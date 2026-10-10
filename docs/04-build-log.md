@@ -140,3 +140,59 @@ Key discoveries:
 ### What could go wrong
 * **Residual Table False Positives**: In dense financial tables where single digits appear in adjacent cells (e.g. Infosys subsidiary notes), whitespace cleaning converts table newlines into spaces, triggering split number warnings (`num_split=3-5`). These are false positives caused by table structure rather than broken words.
 * **Corrupted Font CMaps**: When a PDF creator embeds a damaged or incomplete ToUnicode CMap, characters extract as wrong Unicode code points. Standard text extractors cannot deduce the visual glyph shape without an OCR engine like Tesseract.
+
+---
+
+## Phase 2d: Safe Production Extraction Fix, Best-of Selection, and Corrupted Token Filtering
+
+### The problem this phase solves
+Phase 2c identified that `PyMuPDF` with `TEXT_INHIBIT_SPACES` healed letter-spaced words and split numbers on styled TCS pages. However, three critical risks prevented blindly turning on `TEXT_INHIBIT_SPACES` across the entire application:
+1. **Regression on Clean Pages**: Inhibit spaces suppresses space insertion based on physical glyph bounding boxes. If a clean PDF draws whitespace through horizontal displacement rather than explicit space characters, inhibit spaces can glue legitimate words together (e.g. `operatingprofit` instead of `operating profit`).
+2. **Table Metrics False Positives**: In dense financial tables (such as Infosys subsidiary lists), flattening newlines before computing `number_split_count` caused 48 clean table pages to be falsely flagged as split numbers because single digits on adjacent rows were collapsed into space-separated runs.
+3. **Irrecoverable Font Corruption**: 31 TCS pages contain irrecoverable font CMap defects (`\u0100` to `\u052F`, such as Greek Yot `ϳ` for digit `7` and Latin D-with-stroke `Đ`). If ingested into ChromaDB, these corrupted tokens poison semantic retrieval. If blindly guessed with regex replacements, incorrect numbers enter the RAG knowledge base.
+
+Phase 2d safely integrates the extraction fix into production without any API calls or live embeddings, rigorously verifying document quality before vectorization.
+
+### What we built
+1. **Pre-Collapsed Split Number Metric (`ingestion/quality.py`)**:
+   - Refined `compute_number_split_count` to operate on raw text *before* newline collapsing. Single digits in vertical table columns (`"1\n2\n3\n4\n5"`) now score 0.
+   - Refined `SPLIT_NUMBER_PATTERN` to require at least 4 single digits separated by single spaces (`"2 0 2 6"`) or comma-separated groups (`"44, 0 0 0"`), scoring 0 on clean space-separated numbers (`"10 20 30"`). Infosys split-number flags dropped from 48 down to 0.
+2. **Document-Wide Regression Audit (`scripts/check_inhibit_regression.py`)**:
+   - Compared default vs inhibit extraction across all 743 pages of both reports.
+   - Measured word count ratio (`inhibit / default`) and "glued" tokens ($\ge 25$ alphabetic characters).
+   - Results: **Infosys had 0 regressions** (ratio $= 1.0$, 0 glued tokens). **TCS had 38 pages** with ratio $\le 0.85$ or glued tokens $\ge 2$. Of these, **12 pages were clean before**, proving that a global inhibit flag would actively corrupt clean text.
+3. **Per-Page "Best-Of" Text Extraction (`ingestion/loader.py`)**:
+   - `choose_better_extraction`: Evaluates default extraction first. If default passes quality thresholds, default is retained.
+   - If default triggers defect flags, inhibit mode is evaluated using a composite defect score (`single_letter_ratio + 0.05 * split_count + 0.25 * glued_count`). If inhibit is cleaner without glued tokens, `inhibit_spaces` is selected; otherwise default is retained.
+4. **Corrupted Token Filter & Degradation Logging (`ingestion/loader.py`)**:
+   - `filter_corrupted_tokens`: Drops tokens containing Unicode characters in the corrupted font range (`\u0100` to `\u052F`, e.g. Latin Extended and Greek blocks), preserving valid currency symbols (₹ is `\u20B9`).
+   - If corrupted tokens are dropped, the page is tagged with `text_quality = "degraded"` and recorded in `data/processed/degraded_pages.csv` (`pdf_name, page, odd_char_count, dropped_tokens, remaining_chars`). Clean pages are marked `text_quality = "clean"`.
+5. **Metadata Propagation & Verification (`chunker.py`, `store.py`, `ingest.py`)**:
+   - Chunks inherit `extraction_method` and `text_quality` from their parent page.
+   - `ChromaStore` stores and queries both metadata fields.
+   - `scripts/ingest.py --dry-run` reports per-PDF method counts, degraded counts, and asserts that **0 chunks** contain any corrupted glyph in `\u0100` to `\u052F`.
+
+### How it works in plain English & Real-World Numbers
+When `ingest.py --dry-run` processes our two annual reports:
+
+```
+--- Dry-Run Summary ---
+Total PDFs:               2
+Total pages read:         741 (2 empty pages skipped in Infosys)
+Total pages skipped:      2
+Extraction methods:       default: 706, inhibit_spaces: 35
+Total degraded pages:     32 (31 in TCS, 1 in Infosys)
+Total chunks created:     3109
+Corrupted glyph chunks:   0 (verified none in range \u0100-\u052f)
+Total est. API calls:     156 (batch size 20)
+Est. embedding time:      ~38.9 min (at 80 items/min limit)
+```
+
+Key outcomes on real documents:
+1. **Regression Immunity on Infosys**: 100% of Infosys pages (381 loaded pages) use `default` extraction. The single degraded page in Infosys was Page 5, where the French brand name `"Mondelēz"` contained the accented character `ē` (`\u0113`); 6 brand tokens were dropped, leaving 3,001 clean characters.
+2. **Healed Pages in TCS**: Exactly 35 pages switched to `inhibit_spaces`. On Page 25, `"Employees 584, 51 9 Fresher hiring 44, 0 0 0 +"` cleanly healed into `"Employees 584,519 Fresher hiring 44,000+"`.
+3. **Corrupted Token Elimination in TCS**: 31 pages had corrupted glyphs dropped (Pages 8, 9, 20, 22, 23, 24, 26, 28, 29, 36, 37, 45, 48, 51, 56, 58, 59, 69, 70, 83, 90, 106, 113, 115, 130, 135, 143, 149, 150, 170, 173). On Page 8, corrupted heading tokens (`ĐonƐolŝdated`, `ƌevenue`, `26ϳ,021`) were cleanly dropped, while Chairman Chandrasekaran's AI letter (`"AI is a foundational technology that cuts across all industries..."`) extracts crisply with zero corrupted glyphs remaining in the chunk.
+
+### What could go wrong
+* **Omission of Corrupted Figures**: Until visual OCR is implemented in a future phase, specific revenue and headcount figures that exclusively appeared under corrupted font headings (such as the headline ₹ 267,021 crore on TCS page 8) are excluded from text chunks to prevent hallucination.
+* **Non-English Diacritics in Multinational Reports**: Company names or foreign subsidiaries with Latin Extended characters (e.g. `Mondelēz`) will have those specific tokens dropped by the unicode filter. This is an intentional trade-off to ensure 100% clean vectors in standard corporate disclosures.

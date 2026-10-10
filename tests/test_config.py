@@ -43,6 +43,8 @@ def test_load_default_settings() -> None:
     assert settings.quality.odd_char_ratio_threshold == 0.002
     assert settings.quality.odd_char_count_threshold == 15
     assert settings.quality.number_split_threshold == 3
+    assert settings.quality.corrupted_glyph_range_start == "\u0100"
+    assert settings.quality.corrupted_glyph_range_end == "\u052F"
 
 
 def test_missing_config_file_raises_error(tmp_path: Path) -> None:

@@ -66,6 +66,8 @@ class QualityConfig:
     odd_char_ratio_threshold: float = 0.002
     odd_char_count_threshold: int = 15
     number_split_threshold: int = 3
+    corrupted_glyph_range_start: str = "\u0100"
+    corrupted_glyph_range_end: str = "\u052F"
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,12 @@ def parse_quality_config(data: dict[str, Any]) -> QualityConfig:
         ),
         number_split_threshold=int(
             data.get("number_split_threshold", 3)
+        ),
+        corrupted_glyph_range_start=str(
+            data.get("corrupted_glyph_range_start", "\u0100")
+        ),
+        corrupted_glyph_range_end=str(
+            data.get("corrupted_glyph_range_end", "\u052F")
         ),
     )
 

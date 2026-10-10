@@ -14,6 +14,8 @@ class Chunk:
     source: str
     page: int
     chunk_index: int
+    extraction_method: str = "default"
+    text_quality: str = "clean"
 
 
 def find_word_boundary_end(text: str, start: int, target_end: int) -> int:
@@ -73,6 +75,8 @@ def chunk_page(
             source=page.source,
             page=page.page,
             chunk_index=idx,
+            extraction_method=page.extraction_method,
+            text_quality=page.text_quality,
         )
         for idx, text_slice in enumerate(slices)
     ]

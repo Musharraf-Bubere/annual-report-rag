@@ -16,6 +16,8 @@ class QueryResult:
     source: str
     page: int
     score: float
+    extraction_method: str = "default"
+    text_quality: str = "clean"
 
 
 class ChromaStore:
@@ -101,6 +103,8 @@ class ChromaStore:
                 "source": chunk.source,
                 "page": chunk.page,
                 "chunk_index": chunk.chunk_index,
+                "extraction_method": chunk.extraction_method,
+                "text_quality": chunk.text_quality,
             }
             for chunk in chunks
         ]
@@ -147,6 +151,8 @@ class ChromaStore:
                     source=str(meta.get("source", "")),
                     page=int(meta.get("page", 0)),
                     score=round(score, 4),
+                    extraction_method=str(meta.get("extraction_method", "default")),
+                    text_quality=str(meta.get("text_quality", "clean")),
                 )
             )
         return query_results

@@ -51,19 +51,26 @@ def compute_odd_char_ratio(text: str) -> float:
     return compute_odd_char_count(text) / len(text)
 
 
+SPLIT_NUMBER_PATTERN = re.compile(
+    r"\b(?:\d{1,3},\s*)?\d(?: \d){3,}\b|\b\d{1,3},\s*\d(?: \d){2,}\b"
+)
+
+
 def compute_number_split_count(text: str) -> int:
-    """Counts runs where single digits are separated by single spaces (e.g., '2 0 2 6')."""
+    """Counts runs of split numbers requiring at least 4 single digits or comma-split groups."""
     if not text:
         return 0
-    return len(re.findall(r"\b\d(?: \d)+\b", text))
+    return len(SPLIT_NUMBER_PATTERN.findall(text))
 
 
 def assess_page_quality(
     source: str,
     page: int,
     text: str,
+    raw_text: str | None = None,
 ) -> PageQualityMetrics:
     """Evaluates text quality metrics for a page, identifying formatting and encoding defects."""
+    eval_text = raw_text if raw_text is not None else text
     return PageQualityMetrics(
         source=source,
         page=page,
@@ -71,5 +78,5 @@ def assess_page_quality(
         single_letter_ratio=round(compute_single_letter_ratio(text), 4),
         odd_char_ratio=round(compute_odd_char_ratio(text), 4),
         odd_char_count=compute_odd_char_count(text),
-        number_split_count=compute_number_split_count(text),
+        number_split_count=compute_number_split_count(eval_text),
     )

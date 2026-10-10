@@ -30,3 +30,5 @@ quality:
   odd_char_ratio_threshold: 0.002     # Flag pages where unusual characters exceed 0.2% (broken font encodings)
   odd_char_count_threshold: 15        # Flag pages with 15 or more unusual characters (absolute count)
   number_split_threshold: 3           # Flag pages with 3 or more split number sequences (e.g. "2 0 2 6")
+  corrupted_glyph_range_start: "\u0100" # Start of unicode range for corrupted font glyphs (Latin Ext, Greek, Cyrillic)
+  corrupted_glyph_range_end: "\u052F"   # End of unicode range for corrupted font glyphs

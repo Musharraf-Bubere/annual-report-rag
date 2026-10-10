@@ -207,3 +207,42 @@ This document captures key design decisions, their rationale, alternatives consi
 * **Choice:** Explicit metadata tracking and fail-fast startup validation.
 * **Reason:** Prevents mixing incompatible vector spaces. The user is immediately alerted if their `settings.yaml` model differs from the indexed collection and is instructed to run `scripts/ingest.py --reset`.
 * **Trade-off:** Existing collections created before Phase 2c without metadata will be validated once reset.
+
+---
+
+### Decision 17: Per-Page Best-Of Extraction Selection Over Global Inhibit Flag
+
+* **Context:** In Phase 2c, `pymupdf.TEXT_INHIBIT_SPACES` resolved spaced-out letters and split numbers on TCS headings and tables. However, before deploying it to production, we conducted a full-document regression audit (`check_inhibit_regression.py`) across all 743 pages. The audit revealed that while Infosys had zero regressions, TCS had **38 pages** where word counts dropped or long tokens formed, of which **12 were clean pages** where inhibit spaces concatenated words that were legitimately separate (because the PDF used visual character positioning instead of space characters).
+* **Options Considered:**
+  1. Global inhibit: Fast and simple, but regresses 12 previously clean pages in TCS.
+  2. Heuristic word-splitting post-processor: Complex dictionary lookups, slow, and prone to breaking domain-specific corporate and financial terminology.
+  3. Per-page best-of selection: Extract with default flags first. Only inspect inhibit mode if default extraction triggers defect flags (`single_letter_ratio > 0.15` or `number_split_count >= 3`). If inhibit yields a lower composite defect score without introducing glued tokens ($\ge 25$ alphabetic characters), choose inhibit; otherwise retain default.
+* **Choice:** Per-page best-of selection (`choose_better_extraction`).
+* **Reason:** It provides surgical remediation. 100% of Infosys pages (381 loaded pages) and 325 TCS pages remain on standard extraction with zero risk of regression. Exactly 35 defective TCS pages are healed.
+* **Trade-off:** Evaluates two extractions only on the ~5% of pages that trigger defect thresholds, introducing negligible latency overhead.
+
+---
+
+### Decision 18: Dropping Corrupted Font Tokens Instead of Hallucinating Characters
+
+* **Context:** 31 pages of TCS suffer from irrecoverable font CMap encoding defects (e.g. `"ĐonƐolŝdated ƌevenue oĨ ₹ 26ϳ,021 Đƌoƌe"` on page 8). The font `HouschkaRounded-DemiBold` maps visual glyphs to incorrect Unicode points in the Latin Extended and Greek blocks (`\u0100` to `\u052F`).
+* **Options Considered:**
+  1. Heuristic regex character replacement: Substitute `ϳ` with `7`, `Đ` with `C`, etc.
+  2. Ingest corrupted text as-is into ChromaDB.
+  3. Drop whitespace-separated tokens containing characters in `\u0100` to `\u052F`, tag pages as `text_quality = "degraded"`, record degraded audit records, and assert zero corrupted chunks.
+* **Choice:** Drop corrupted tokens and tag metadata as `"degraded"`.
+* **Reason:** In financial RAG, hallucinating or guessing corrupted numbers is dangerous—a misidentified digit or financial metric corrupts balance sheets and executive letters. Ingesting them pollutes the vector index with non-English subwords. Dropping the corrupted tokens (`ĐonƐolŝdated`, `ƌevenue`, `26ϳ,021`) preserves clean surrounding text (e.g. Chairman Chandrasekaran's AI letter) without poisoning embedding space or search results. The `"degraded"` metadata enables downstream filtering and citation warnings.
+* **Trade-off:** Specific figures from those 31 pages are omitted from text chunks until visual OCR is introduced.
+
+---
+
+### Decision 19: Deferring Visual OCR to a Dedicated Future Pipeline Phase
+
+* **Context:** While visual OCR (e.g. Tesseract or a vision multimodal LLM) could visually read the corrupted numbers on TCS page 8, introducing OCR for the entire corpus adds heavy binary dependencies, external installation requirements, and substantial latency or API expense.
+* **Options Considered:**
+  1. Add an OCR library (e.g. pytesseract) immediately and re-OCR the entire corpus.
+  2. OCR only pages flagged as degraded during ingestion.
+  3. Defer OCR, log degraded pages to `data/processed/degraded_pages.csv`, and preserve clean native extraction for 95.8% of corpus pages.
+* **Choice:** Defer OCR and isolate degraded pages cleanly via metadata.
+* **Reason:** 709 of 741 loaded pages (95.8%) extract crisply with native C-speed PyMuPDF (< 10 seconds total). Deferring OCR keeps the core ingestion pipeline lean, explainable, and fast, while the audit CSV and chunk metadata pinpoint exactly which 32 pages require visual OCR remediation in a future phase.
+* **Trade-off:** Users cannot retrieve numbers from the 32 degraded pages until the OCR phase is built.

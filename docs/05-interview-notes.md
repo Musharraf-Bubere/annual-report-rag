@@ -129,3 +129,37 @@ The font used in that heading (`HouschkaRounded-DemiBold`) has an internal ToUni
 ### Question 18: Why is storing embedding model name and dimension metadata in ChromaDB essential for production RAG systems?
 **Answer:**
 Vector embeddings from different models inhabit completely incompatible geometric manifolds. Even if two models share the same output dimension (e.g. 768), a vector from `gemini-embedding-001` cannot be compared via cosine similarity against a vector from `text-embedding-004` or an open-source model. If a collection lacks metadata tracking, changing model settings in `settings.yaml` silently allows the database to accept mixed vectors, destroying retrieval quality and hallucinating answers. Storing `embedding_model` and `embedding_dimension` in collection metadata enables fail-fast validation on startup, forcing a clean re-index with `--reset`.
+
+---
+
+## Phase 2d: Safe Production Extraction Fix, Best-of Selection, and Corrupted Token Filtering
+
+### Question 19: Why can't a global PDF extraction flag like `TEXT_INHIBIT_SPACES` be enabled unconditionally across an entire document corpus?
+**Answer:**
+PDFs do not store space characters; they place glyphs at $(x, y)$ coordinate positions. When `TEXT_INHIBIT_SPACES` is enabled, the PDF parser disables heuristic space insertion based on character advances. In documents where text flows across standard character widths, this prevents spurious space insertion (healing `"F ortune M ag az i ne"` into `"Fortune Magazine"`).
+However, when a document uses visual positioning or loose tracking instead of explicit spaces, suppressing heuristic spaces causes legitimate, distinct words to be glued together into giant tokens (e.g. `operatingprofit` or tokens $\ge 25$ characters).
+In our regression audit across 743 pages, global inhibit spaces broke **12 previously clean pages** in TCS. A production system must therefore employ a **per-page best-of selection**: test default extraction first, and only activate inhibit mode if defect thresholds are triggered and the inhibit extraction proves mathematically superior without introducing glued tokens.
+
+---
+
+### Question 20: How should a production RAG ingestion pipeline handle irrecoverable font CMap corruption without guessing or hallucinating data?
+**Answer:**
+When a PDF embedding font has a damaged ToUnicode CMap (e.g. mapping visual digit `7` to Greek Yot `ϳ`, or `C` to Latin D-with-stroke `Đ`), the true visual character is physically absent from the text stream.
+In high-stakes financial RAG, there are two common mistakes:
+1. **Blindly ingesting it**: Corrupted Unicode tokens enter the vector store, degrading semantic similarity queries and causing retrieval failures.
+2. **Hallucinating character substitutions**: Using ad-hoc regex heuristics to guess character replacements (e.g. assuming `ϳ` is `7`) risks corrupting balance sheet figures or legal names if the assumption is wrong.
+
+The disciplined engineering choice is:
+1. **Filter corrupted tokens**: Drop whitespace-delimited tokens containing characters in the corrupted Unicode range (`\u0100` to `\u052F`). This preserves clean surrounding text (e.g. entire executive letters) while ensuring zero corrupted tokens enter vector chunks.
+2. **Explicit metadata tagging**: Tag affected pages as `text_quality = "degraded"` and log exact page numbers, dropped token counts, and odd character counts to an audit CSV (`degraded_pages.csv`).
+3. **Downstream transparency**: Expose the `text_quality` flag in retrieval chunks and UI citations so that the LLM and end user know the page underwent lossy filtering, and queue those specific pages for visual OCR remediation.
+
+---
+
+### Question 21: How do you enforce data quality invariants before spending time and quota on vector embeddings?
+**Answer:**
+Embedding large document corpora against external APIs involves substantial rate limits, wall-clock time, and API cost. Incurring these costs on unverified data is a major engineering anti-pattern.
+A robust ingestion architecture enforces quality invariants through:
+1. **Deterministic dry-run mode (`--dry-run`)**: Executes the entire loading, cleaning, filtering, and chunking pipeline offline, reporting page methods, degraded counts, chunk counts, and estimated embedding calls/duration.
+2. **Pre-embedding invariant assertions**: The dry-run scans all generated chunks against quality invariants—for example, asserting that exactly **0 chunks** contain characters in the corrupted Unicode range before a single API call is allowed.
+3. **Idempotent checkpointing**: By computing deterministic chunk IDs (`{source}-p{page}-c{chunk_index}`) and checking vector store presence before each batch, runs can be safely interrupted and resumed without duplicating work or embeddings.

@@ -41,7 +41,7 @@ def audit_pdf(
         page_num = idx + 1
         raw_text = doc[idx].get_text()
         cleaned = clean_text(raw_text)
-        metrics = assess_page_quality(source, page_num, cleaned)
+        metrics = assess_page_quality(source, page_num, cleaned, raw_text=raw_text)
         all_metrics.append(metrics)
         excerpts.append(cleaned[:150])
 

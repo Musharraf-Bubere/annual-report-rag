@@ -19,6 +19,8 @@ def test_chroma_store_operations(tmp_path: Path) -> None:
         source="infy",
         page=1,
         chunk_index=0,
+        extraction_method="default",
+        text_quality="clean",
     )
     chunk2 = Chunk(
         id="tcs-p5-c0",
@@ -26,6 +28,8 @@ def test_chroma_store_operations(tmp_path: Path) -> None:
         source="tcs",
         page=5,
         chunk_index=0,
+        extraction_method="inhibit_spaces",
+        text_quality="degraded",
     )
 
     vec1 = [1.0, 0.0, 0.0]
@@ -47,6 +51,8 @@ def test_chroma_store_operations(tmp_path: Path) -> None:
     assert results[0].page == 1
     assert results[0].text == "Cloud services generated strong quarterly revenue."
     assert results[0].score == 1.0
+    assert results[0].extraction_method == "default"
+    assert results[0].text_quality == "clean"
 
 
 def test_empty_store_query(tmp_path: Path) -> None:

@@ -54,6 +54,10 @@ def execute_dry_run(
     total_chunks = 0
     total_pages_read = 0
     total_pages_skipped = 0
+    total_default_pages = 0
+    total_inhibit_pages = 0
+    total_degraded_pages = 0
+    all_chunks = []
 
     for path in pdf_paths:
         total_in_pdf = get_pdf_page_count(path)
@@ -62,6 +66,10 @@ def execute_dry_run(
             path,
             min_page_chars=settings.ingestion.min_page_chars,
             limit_pages=limit_pages,
+            single_threshold=settings.quality.single_letter_ratio_threshold,
+            number_split_threshold=settings.quality.number_split_threshold,
+            glyph_range_start=settings.quality.corrupted_glyph_range_start,
+            glyph_range_end=settings.quality.corrupted_glyph_range_end,
         )
         skipped = examined - len(pages)
         chunks = chunk_pages(
@@ -69,14 +77,21 @@ def execute_dry_run(
             chunk_size=settings.ingestion.chunk_size,
             chunk_overlap=settings.ingestion.chunk_overlap,
         )
+        all_chunks.extend(chunks)
         api_calls = (
             math.ceil(len(chunks) / batch_size) if len(chunks) > 0 else 0
         )
+
+        n_default = sum(1 for p in pages if p.extraction_method == "default")
+        n_inhibit = sum(1 for p in pages if p.extraction_method == "inhibit_spaces")
+        n_degraded = sum(1 for p in pages if p.text_quality == "degraded")
 
         print(f"\nPDF: {path.name}")
         print(f"  Pages examined:        {examined}")
         print(f"  Pages loaded:          {len(pages)}")
         print(f"  Pages skipped:         {skipped}")
+        print(f"  Extraction methods:    default: {n_default}, inhibit_spaces: {n_inhibit}")
+        print(f"  Degraded pages:        {n_degraded}")
         print(f"  Chunks generated:      {len(chunks)}")
         print(
             f"  Est. embedding calls:  {api_calls} (batch size {batch_size})"
@@ -84,7 +99,18 @@ def execute_dry_run(
 
         total_pages_read += len(pages)
         total_pages_skipped += skipped
+        total_default_pages += n_default
+        total_inhibit_pages += n_inhibit
+        total_degraded_pages += n_degraded
         total_chunks += len(chunks)
+
+    # Verify zero chunks contain characters in the corrupted Unicode range
+    r_start = settings.quality.corrupted_glyph_range_start
+    r_end = settings.quality.corrupted_glyph_range_end
+    corrupted_count = sum(
+        1 for c in all_chunks if any(r_start <= ch <= r_end for ch in c.text)
+    )
+    assert corrupted_count == 0, f"Found {corrupted_count} chunks with corrupted glyphs!"
 
     total_api_calls = (
         math.ceil(total_chunks / batch_size) if total_chunks > 0 else 0
@@ -95,7 +121,10 @@ def execute_dry_run(
     print(f"Total PDFs:               {len(pdf_paths)}")
     print(f"Total pages read:         {total_pages_read}")
     print(f"Total pages skipped:      {total_pages_skipped}")
+    print(f"Extraction methods:       default: {total_default_pages}, inhibit_spaces: {total_inhibit_pages}")
+    print(f"Total degraded pages:     {total_degraded_pages}")
     print(f"Total chunks created:     {total_chunks}")
+    print(f"Corrupted glyph chunks:   0 (verified none in range \\u{ord(r_start):04x}-\\u{ord(r_end):04x})")
     print(
         f"Total est. API calls:     {total_api_calls} (batch size {batch_size})"
     )

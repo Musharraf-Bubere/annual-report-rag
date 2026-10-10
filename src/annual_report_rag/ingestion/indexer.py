@@ -61,6 +61,10 @@ def index_pdfs(
             path,
             min_page_chars=settings.ingestion.min_page_chars,
             limit_pages=limit_pages,
+            single_threshold=settings.quality.single_letter_ratio_threshold,
+            number_split_threshold=settings.quality.number_split_threshold,
+            glyph_range_start=settings.quality.corrupted_glyph_range_start,
+            glyph_range_end=settings.quality.corrupted_glyph_range_end,
         )
         total_pages_read += len(pages)
         total_pages_skipped += examined - len(pages)
