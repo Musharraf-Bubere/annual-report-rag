@@ -320,3 +320,40 @@ This document captures key design decisions, their rationale, alternatives consi
 * **Reason:** Ensures zero corrupted font glyphs enter chunks in TCS, while providing full provenance tracking. Pages that merely underwent numeral repair are marked `"repaired"` rather than degraded.
 * **Trade-off:** Pages with minor single-token letter corruption are now marked `"degraded"` rather than passing as clean.
 
+---
+
+### Decision 25: Native Python Float Vector Type Contract at Store Boundaries (and Why Fakes Hid the Bug)
+
+* **Context:** ChromaDB validates embedding vectors by checking `isinstance(val, (int, float))` on elements. FastEmbed yields NumPy arrays with `np.float32` scalars. Converting an array with `list(vec)` creates a Python list whose elements remain `np.float32` objects, which fail Chroma's strict type validation and raise `ValueError: Expected embeddings to be a list of floats or ints...`.
+* **Why Fakes Hid the Bug:** `FakeProvider` used standard Python math (`math.sin(...)`) inside a list comprehension, returning native Python `float` scalars. Unit tests relying on `FakeProvider` passed completely, masking the concrete ONNX scalar type mismatch until real end-to-end execution.
+* **Options Considered:**
+  1. Rely solely on the embedder to return Python floats.
+  2. Rely solely on the vector store to sanitize inputs.
+  3. Defense-in-depth: Specify strict `list[list[float]]` type contract on `EmbeddingProvider.embed` and enforce defensive conversion (`np.asarray(..., dtype=np.float32).tolist()`) at both the provider source and the `ChromaStore` boundary (`add_chunks` and `query`).
+* **Choice:** Defense-in-depth contract enforcement.
+* **Reason:** Guarantees vector store operations never fail due to scalar type discrepancies regardless of embedder backend (FastEmbed, PyTorch, NumPy, or REST APIs), while keeping failure messages concise and sanitizing raw vector dumps from logs.
+* **Trade-off:** Negligible conversion overhead on batches.
+
+---
+
+### Decision 26: Confirmed Cyrillic Glyph Mapping for Percent Sign (`\u0439` -> `%`)
+
+* **Context:** In `tcs-ar-26.pdf`, 3 occurrences of `\u0439` ('й', Cyrillic small letter i short) sat immediately after decimal numbers: `"4.6й"`, `"25.0й"`, `"2.8й"`.
+* **Evidence:** Stated percentages match audited annual figures (e.g. fiscal 2026 revenue 267,021 vs 255,324 crore is $+4.58\% \approx 4.6\%$; operating income 66,838 / 267,021 is $25.02\% \approx 25.0\%$).
+* **Diagnostic on `U+036C` ('ͬ'):** Evaluated for potential mapping to `/`. Occurred in 2 places: page 8 (`"₹110ͬ-"`) and page 173 (`"disposaůͬ redeŵption"`). Because page 173 sits between alphabetic characters rather than strictly matching `"₹<digits>ͬ-"`, `U+036C` was excluded following strict conservatism principles.
+* **Choice:** Add `"\u0439": "%"` to `GLYPH_REPAIR_MAP`. Do not map `U+036C`.
+* **Reason:** Heals 3 additional corrupted characters in headline financial figures across TCS, restoring `%` without guessing unconfirmed glyphs.
+* **Trade-off:** None.
+
+---
+
+### Decision 27: Strict 1:1 Character Translation without Number Reformatting
+
+* **Context:** In Phase 2f, a regex substitution was introduced to reformat 6-digit rupee figures into Indian numbering format (e.g. `₹107,240` -> `₹1,07,240`).
+* **Options Considered:**
+  1. Keep regex formatting: Modifies token structure based on assumptions.
+  2. Pure 1:1 character translation: Remove number formatting regexes entirely; decode `"༤ϭϬϳ͕ ϮϰϬ"` literally to `"₹107,240"`.
+* **Choice:** Pure 1:1 character translation without number reformatting.
+* **Reason:** Automated data repair must restore corrupted encoding faithfully without altering original formatting. Arbitrary formatting rewrites risk corrupting financial values if inputs deviate from anticipated patterns.
+* **Trade-off:** Numerical strings reflect the document's literal comma grouping rather than standardized grouping.
+

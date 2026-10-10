@@ -14,7 +14,7 @@ Evidence from tcs-ar-26 character analysis (characters U+0100-U+0FFF):
    - U+03F4 ('ϴ', count 23): In '₹ 66,ϴ3ϴ' (₹ 66,838), '₹ 52,ϴ20' (₹ 52,820). Confirmed '8'.
    - U+03F5 ('ϵ', count 16): In '༤ϭϱϰ͕ϵϵϰ' (154,994), '₹Ϯ͕ ϮϬ͕ ϵ3ϴ' (₹2,20,938). Confirmed '9'.
 
-2. Punctuation and Currency:
+2. Punctuation, Currency, and Percent:
    - U+0355 ('͕', combining right arrowhead below, count 58): In '༤ϭϬϳ͕ϮϰϬ' (107,240),
      '₹Ϯ͕ ϲϳ͕ ϬϮ1' (₹2,67,021), 'eaĐh͕', 'Đrore͕'. Confirmed comma ','.
    - U+0358 ('͘', combining dot above right, count 8): In '25͘0й͘' (25.0%.), 'Đƌoƌe͘' (crore.),
@@ -22,10 +22,13 @@ Evidence from tcs-ar-26 character analysis (characters U+0100-U+0FFF):
    - U+0F24 ('༤', Tibetan digit four, count 14): In 'Equity ༤ϭϬϳ͕ϮϰϬ ĐƌŽƌe' (₹107,240 crore),
      'Global CSR Spend ༤ ϭ͕ϭϱϯ CƌŽƌe' (₹ 1,153 Crore). Precedes financial amounts followed
      by 'crore' / 'Crore'. Confirmed rupee symbol '₹'.
+   - U+0439 ('й', Cyrillic small letter i short, count 3): In '25͘0й͘' (25.0%.), 'ϰ.ϲй' (4.6%),
+     'Ϯ.ϴй' (2.8%). Approved addition: sits right after decimals and matches stated percentages. Confirmed '%'.
 
-Characters noted next to numbers but NOT mapped:
-------------------------------------------------
-- U+0439 ('й', count 3): Appears where '%' belongs ('25͘0й͘', 'ϰ.ϲй', 'Ϯ.ϴй'). Excluded pending approval.
+Characters analyzed but NOT mapped:
+-----------------------------------
+- U+036C ('ͬ', count 2): Occurs on p8 in '₹110ͬ-' and on p173 in 'disposaůͬ redeŵption'.
+  Because it appears between letters on p173 (not solely in '₹<digits>ͬ-'), it is not mapped.
 - U+037E (';') / U+037F ('Ϳ'): Appear where parentheses belong (';eǆĐůudinŐ...Ϳ'). Excluded.
 - Letters like U+010F ('ď'): Excluded because coding rules prohibit guessing letters.
 """
@@ -47,13 +50,14 @@ GLYPH_REPAIR_MAP: dict[str, str] = {
     "\u0355": ",",  # ͕ -> , (combining mark used as comma)
     "\u0358": ".",  # ͘ -> . (combining mark used as period)
     "\u0f24": "₹",  # ༤ -> ₹ (Tibetan digit 4 used as rupee sign)
+    "\u0439": "%",  # й -> % (Cyrillic small letter i short used as percent sign)
 }
 
 _TRANSLATE_TABLE = str.maketrans(GLYPH_REPAIR_MAP)
 
 
 def repair_glyphs(text: str) -> tuple[str, int]:
-    """Repairs corrupted digit, punctuation, and currency glyphs in extracted text.
+    """Repairs corrupted digit, punctuation, currency, and percent glyphs in extracted text.
 
     Args:
         text: Extracted page text containing potentially corrupted glyphs.
@@ -71,10 +75,7 @@ def repair_glyphs(text: str) -> tuple[str, int]:
     repaired = text.translate(_TRANSLATE_TABLE)
 
     # When combining commas were followed by space before digits in numbers (e.g. "₹2, 67, 021"),
-    # collapse the space between commas and subsequent digits.
+    # collapse the space between commas and subsequent digits so "2, 67, 021" becomes "2,67,021".
     repaired = re.sub(r"(?<=\d,)\s+(?=\d)", "", repaired)
-
-    # Format 6-digit Indian rupee amounts into standard Indian grouping (e.g. ₹107,240 -> ₹1,07,240)
-    repaired = re.sub(r"₹(\d)(\d{2}),(\d{3})", r"₹\1,\2,\3", repaired)
 
     return repaired, repaired_count

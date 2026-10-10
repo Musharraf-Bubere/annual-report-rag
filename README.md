@@ -111,8 +111,8 @@ Corporate annual reports frequently employ stylized typography, custom subsetted
 | **Text Quality: Clean Pages** | 381 (100%) | 329 (91.4%) | 710 (95.8%) |
 | **Text Quality: Repaired Pages** | 0 (0.0%) | 1 (0.3%) | 1 (0.1%) |
 | **Text Quality: Degraded Pages** | 0 (0.0%) | 30 (8.3%) | 30 (4.1%) |
-| **Repaired Characters** | 0 | 429 | 429 |
-| **Dropped Corrupted Tokens** | 0 | 227 | 227 |
+| **Repaired Characters** | 0 | 432 | 432 |
+| **Dropped Corrupted Tokens** | 0 | 224 | 224 |
 | **Total Chunks Generated** | 1,684 | 1,425 | 3,109 |
 | **Chunks with U+0100-U+052F** | 3 (0.18%) | 0 (0.00%) | 3 (0.10%) |
 
@@ -123,10 +123,10 @@ Corporate annual reports frequently employ stylized typography, custom subsetted
    - Our **per-page best-of extractor** automatically routes these 35 pages to `PyMuPDF` with `TEXT_INHIBIT_SPACES`, healing them into `"Fortune Magazine"`, `"584,519"`, and `"44,000+"`.
    - The other 706 pages remain on standard default extraction, protecting clean pages from word-gluing regressions.
 
-2. **Empirical Glyph Repair for Corrupted Numerals (429 Characters Healed)**:
-   - In `tcs-ar-26.pdf`, corrupted font encodings caused digits to map to Coptic/Greek characters (`\u03EC-\u03F5`), commas to combining mark `\u0355`, periods to `\u0358`, and the rupee sign to `\u0F24`.
-   - Our `glyph_repair.py` lookup table repairs these characters upfront: `"26ϳ,021"` becomes `"267,021"`, `"₹Ϯ͕ ϲϳ͕ ϬϮ1"` becomes `"₹2,67,021"`, and `"Equity ༤ϭϬϳ͕ϮϰϬ"` becomes `"Equity ₹1,07,240"`.
-   - In accordance with safety rules, **zero letter guessing is performed** (letters like `\u010F` for `b` are excluded from repair).
+2. **Empirical Glyph Repair for Corrupted Numerals and Symbols (432 Characters Healed)**:
+   - In `tcs-ar-26.pdf`, corrupted font encodings caused digits to map to Coptic/Greek characters (`\u03EC-\u03F5`), commas to combining mark `\u0355`, periods to `\u0358`, the rupee sign to `\u0F24`, and percent signs to Cyrillic `\u0439` ('й').
+   - Our `glyph_repair.py` lookup table repairs these characters upfront: `"26ϳ,021"` becomes `"267,021"`, `"₹Ϯ͕ ϲϳ͕ ϬϮ1"` becomes `"₹2,67,021"`, `"4.6й"` becomes `"4.6%"`, and `"Equity ༤ϭϬϳ͕ϮϰϬ"` decodes literally to `"Equity ₹107,240"`.
+   - In accordance with safety rules, **zero letter guessing is performed** (letters like `\u010F` for `b` are excluded from repair), and number formatting is never rewritten.
 
 3. **Gated Token Filtering & Allowlisting**:
    - For remaining corrupted glyphs, tokens in `\u0100` to `\u052F` are dropped on degraded pages (`odd_char_count >= 1`), marking 30 TCS pages as `"degraded"` and logging details to `data/processed/degraded_pages.csv`.

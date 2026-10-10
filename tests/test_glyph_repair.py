@@ -28,12 +28,20 @@ def test_repair_four_digit_year() -> None:
     assert count == 4
 
 
-def test_repair_tibetan_rupee_and_digits() -> None:
-    """Verifies that '༤ϭϬϳ͕ϮϰϬ' becomes '₹1,07,240'."""
-    raw = "༤ϭϬϳ͕ϮϰϬ"
+def test_repair_tibetan_rupee_and_digits_literal_decode() -> None:
+    """Verifies that '༤ϭϬϳ͕ ϮϰϬ' decodes literally to '₹107,240' without grouping rewrites."""
+    raw = "༤ϭϬϳ͕ ϮϰϬ"
     repaired, count = repair_glyphs(raw)
-    assert repaired == "₹1,07,240"
+    assert repaired == "₹107,240"
     assert count == 8
+
+
+def test_repair_percent_glyph() -> None:
+    """Verifies that '4.6й', '25.0й', and '2.8й' have 'й' repaired to '%'."""
+    raw = "Delivering growth of 4.6й and operating margin of 25.0й."
+    repaired, count = repair_glyphs(raw)
+    assert repaired == "Delivering growth of 4.6% and operating margin of 25.0%."
+    assert count == 2
 
 
 def test_mondelez_survives_untouched_by_repair_and_filter() -> None:

@@ -311,3 +311,58 @@ Side-by-side verification on TCS Pages 8 and 36:
 - Page 36 Sentence 1: `"&z ϮϬϮϲ ǁas ₹Ϯ͕ ϲϳ͕ ϬϮ1 Đrore"`, `"₹Ϯ͕ ϱϱ͕ 3Ϯϰ Đrore"` -> `"&z 2026 ǁas ₹2,67,021 Đrore"`, `"₹2,55,324 Đrore"` (21 glyphs repaired).
 - Page 36 Sentence 2: `"₹ϱϮ͕ ϴϮϬ Đrore"`, `"₹ϰϴ͕ ϱϱ3 Đrore in &z ϮϬϮϱ"` -> `"₹52,820 Đrore"`, `"₹48,553 Đrore in &z 2025"` (20 glyphs repaired).
 
+---
+
+## Phase 2f.1: Vector Type Normalization for ChromaDB
+
+### The problem this phase solves
+During initial test ingestion with local FastEmbed ONNX embeddings, ChromaDB crashed on batch insertion with `ValueError: Expected embeddings to be a list of floats or ints, a list of lists, a numpy array, or a list of numpy arrays...`.
+- FastEmbed yields NumPy arrays whose scalar elements have `dtype=np.float32`.
+- Simply doing `list(vec)` preserves these NumPy scalars (`type(vectors[0][0])` is `<class 'numpy.float32'>`).
+- ChromaDB's schema validator performs `isinstance(val, (int, float))` on list elements; in Python, NumPy numeric scalars do not inherit from Python's built-in `float`, causing the validation check to fail.
+- Unit tests using `FakeProvider` passed completely because `FakeProvider` calculated vectors with native Python `math.sin()`, yielding pure Python floats.
+
+### What we built
+1. **Contract Enforcement at the Source (`providers/local_embedder.py`)**:
+   - Updated `LocalEmbeddingProvider.embed` and `l2_normalize` to convert vectors via `[float(x) for x in arr.tolist()]`, ensuring every element is a native Python `float`.
+   - Updated `EmbeddingProvider.embed` docstring specifying that providers must return `list[list[float]]` with native Python float scalars.
+2. **Defensive Conversion at the Vector Store Boundary (`retrieval/store.py`)**:
+   - In `ChromaStore.add_chunks` and `ChromaStore.query`, convert inputs defensively via `np.asarray(..., dtype=np.float32).tolist()`, ensuring Chroma operations never depend on upstream caller scalar types.
+3. **Readable Top-Level Error Handling (`scripts/ingest.py`)**:
+   - Wrapped `main()` in top-level exception handling that catches errors, prints only the exception class and first 300 characters of the error message, and exits with code 1. Large vector dumps are never printed to the console.
+4. **Offline Test Suite Enhancements**:
+   - Added unit test in `test_providers.py` asserting that when FastEmbed returns NumPy `float32` arrays, the embedder returns Python floats (`type(val) is float`).
+   - Added unit test in `test_store.py` asserting `ChromaStore` accepts `np.float32` inputs for both `add_chunks` and `query`.
+   - Added indexer integration test in `test_indexer.py` with stubbed local embedder on a generated PDF in temporary directories.
+5. **End-to-End Verification**:
+   - Executed `scripts/ingest.py --reset --limit-pages 3`, embedding 13/13 chunks into Chroma in 4.58s.
+   - Executed `scripts/search_demo.py "How many employees does TCS have?"`, retrieving top 5 chunks with similarity scores.
+
+---
+
+## Phase 2f.2: Glyph Repair Corrections
+
+### The problem this phase solves
+Phase 2f introduced initial empirical glyph repairs for digits and currency in `tcs-ar-26.pdf`. However, three refinements were required:
+1. **Unmapped Percent Sign (`U+0439`)**: `\u0439` ('й') sat after decimals in `"4.6й"`, `"25.0й"`, `"2.8й"`, causing those tokens to be dropped on degraded pages despite matching headline growth and margin figures.
+2. **Over-Aggressive Number Rewriting**: An Indian numbering regex (`₹107,240` -> `₹1,07,240`) altered document formatting rather than strictly repairing corrupted character encodings.
+3. **Ambiguity Around `U+036C` ('ͬ')**: Needed diagnostic verification whether `U+036C` strictly represents `/` in share price notations (`"₹110ͬ-"`).
+
+### What we built
+1. **Approved Mapping Addition (`\u0439` -> `%`)**:
+   - Added `\u0439` ('й', Cyrillic small letter i short) $\to$ `%` in `GLYPH_REPAIR_MAP`.
+   - Evidence: Matches audited annual figures (revenue growth $+4.58\% \approx 4.6\%$; operating margin $25.02\% \approx 25.0\%$).
+2. **Removal of Number Formatting Regexes**:
+   - Removed `re.sub(r"₹(\d)(\d{2}),(\d{3})", ...)` from `repair_glyphs()`.
+   - All repairs are strictly 1:1 character translations; `"༤ϭϬϳ͕ ϮϰϬ"` decodes literally to `"₹107,240"`.
+3. **Corpus Diagnostic on `U+036C` and Digit Contexts**:
+   - Found exactly 2 occurrences of `U+036C` in `tcs-ar-26.pdf`: page 8 (`"₹110ͬ-"`) and page 173 (`"disposaůͬ redeŵption"`).
+   - Because page 173 occurs between alphabetic letters rather than in `"₹<digits>ͬ-"`, `U+036C` was excluded following strict conservatism rules.
+   - Verified that no other unmapped `\u0100-\u0FFF` characters appear between or after digits $>3$ times.
+4. **Vector Store Isolation Audit**:
+   - Confirmed that zero test files write to or reset the production `chroma_db/` folder (all use `tmp_path`).
+5. **Dry-Run Results**:
+   - Repaired characters increased from 429 to 432 (+3).
+   - Dropped tokens decreased from 227 to 224 (-3).
+   - Headline sentences on Page 8 now preserve `4.6%`, `25.0%`, and `8.8%`.
+

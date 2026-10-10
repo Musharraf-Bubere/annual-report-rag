@@ -220,3 +220,26 @@ Our disciplined solution:
 3. **Strict Prohibition on Letter Guessing**: Letters (such as `\u010F` for `b` in `"attriďutaďůe"`) and unconfirmed symbols (such as `\u0439` for `%`) are strictly excluded. Letter-corrupted words are safely filtered by the token filter on degraded pages.
 4. **Three-State Quality Provenance**: Pages are marked `"clean"` (no anomalies), `"repaired"` (digits restored, zero tokens dropped), or `"degraded"` (irrecoverable tokens dropped), ensuring full provenance transparency in retrieval metadata.
 
+---
+
+### Question 26: What kind of bugs do unit tests with test fakes typically miss, and how do you protect against them?
+**Answer:**
+Test fakes (like our `FakeProvider`) implement the behavioral interface of a dependency using simple, pure standard-library primitives (e.g. generating pseudo-vectors with `math.sin()` list comprehensions). While indispensable for fast, deterministic unit testing, fakes systematically miss **boundary contract mismatches**:
+1. **Scalar and Container Type Subtle Incompatibilities**: The fake returns `list[list[float]]` where each scalar is a built-in Python `float`. However, production machine learning libraries (such as FastEmbed, ONNX Runtime, or PyTorch) yield NumPy ndarrays. Even if you wrap the array in `list(vec)`, the inner elements remain `numpy.float32` scalars.
+2. **Strict Third-Party Invariants**: Downstream storage engines like ChromaDB validate vector types using `isinstance(val, (int, float))`. In Python, `isinstance(np.float32(1.0), float)` evaluates to `False`. All unit tests using the fake pass with 100% green coverage, while the real production pipeline crashes on its very first batch.
+
+**How to systematically protect against this**:
+1. **Explicit Type Contracts**: Specify exact scalar types in the abstract base interface docstrings (e.g. `list[list[float]]` of standard Python floats, not NumPy numeric scalars).
+2. **Fidelity in Unit Stubs**: When unit-testing component boundaries, stub third-party libraries using the exact types they produce in production (e.g. returning NumPy `float32` arrays in embedder tests, and testing that the vector store accepts NumPy scalar inputs).
+3. **Defensive Boundary Normalization**: Never trust that external callers or upstream components returned pure native types. Normalize at the boundary (e.g. `np.asarray(vectors, dtype=np.float32).tolist()`).
+4. **Offline Integration & Gated Slow Tests**: Maintain end-to-end integration tests using the real production models, isolated behind `@pytest.mark.slow` so CI runs fast while verification harnesses can exercise the true runtime stack.
+
+---
+
+### Question 27: When repairing corrupted data automatically in an ETL or RAG pipeline, what must you NEVER do?
+**Answer:**
+When building automated data repair for OCR or document extraction, you must **NEVER rewrite formatting or editorial styling based on assumptions**.
+1. **The Danger of Subjective Reformatting**: In Phase 2f, after converting corrupted Coptic glyphs to digits and rupee signs, an automatic regex was added to reformat 6-digit rupee numbers into Indian grouping (`₹107,240` -> `₹1,07,240`). While well-intentioned, this was a critical flaw: it altered the author's original numeral layout and invented punctuation commas that did not exist in the source document.
+2. **Risk of Silent Corruption**: Formatting rules designed for one specific number length can corrupt decimal values, foreign currency denominations, or non-standard accounting presentations. For instance, transforming numbers with regexes risks mangling account codes, telephone extensions, or multi-currency disclosures.
+3. **The Golden Rule of Data Repair**: **Repair must be a pure 1:1 character restoration of corrupted font encodings, never an editorial reformatter.** If the source text literally contains `107,240`, decode the glyphs to `107,240`. Preserve the exact spacing, commas, and formatting of the source publication.
+
