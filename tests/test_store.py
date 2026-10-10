@@ -186,3 +186,37 @@ def test_chroma_store_reset_overrides_mismatch(tmp_path: Path) -> None:
     assert recreated.collection.metadata.get("embedding_provider") == "local"
     assert recreated.collection.metadata.get("embedding_model") == "model-v2"
     assert recreated.collection.metadata.get("embedding_dimension") == 512
+
+
+def test_chroma_store_accepts_numpy_float32(tmp_path: Path) -> None:
+    """Verifies that ChromaStore defensively accepts numpy.float32 vectors in add_chunks and query."""
+    import numpy as np
+
+    db_path = str(tmp_path / "numpy_test_chroma")
+    store = ChromaStore(persist_path=db_path, collection_name="np_test_col")
+
+    chunk = Chunk(
+        id="np-chunk-1",
+        text="Audited financial results in numpy format.",
+        source="test_source",
+        page=1,
+        chunk_index=0,
+    )
+
+    # Pass numpy float32 2D array
+    np_vectors = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+    store.add_chunks([chunk], np_vectors)
+    assert store.count() == 1
+
+    # Query using numpy float32 1D array
+    np_query_vec = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    results = store.query(np_query_vec, top_k=1)
+    assert len(results) == 1
+    assert results[0].text == "Audited financial results in numpy format."
+    assert pytest.approx(results[0].score, 0.001) == 1.0
+
+    # Query using list of numpy.float32 scalars
+    scalar_query_vec = [np.float32(1.0), np.float32(0.0), np.float32(0.0)]
+    results2 = store.query(scalar_query_vec, top_k=1)
+    assert len(results2) == 1
+    assert results2[0].text == "Audited financial results in numpy format."

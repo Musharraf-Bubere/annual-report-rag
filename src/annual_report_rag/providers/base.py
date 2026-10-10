@@ -12,7 +12,12 @@ class EmbeddingProvider(ABC):
         texts: list[str],
         purpose: str = "document",
     ) -> list[list[float]]:
-        """Converts a batch of texts into high-dimensional vector embeddings."""
+        """Converts a batch of texts into high-dimensional vector embeddings.
+
+        Must return a list of lists containing standard Python float scalars
+        (list[list[float]]), not numpy scalar types, to ensure compatibility
+        across vector store backends.
+        """
 
 
 class GenerationProvider(ABC):

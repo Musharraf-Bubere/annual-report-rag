@@ -222,6 +222,36 @@ def test_local_embedder_count_and_dimension_validation() -> None:
         provider.embed(["text1"])
 
 
+def test_local_embedder_returns_native_python_floats() -> None:
+    """Verifies that LocalEmbeddingProvider returns native Python float scalars when model returns numpy float32 arrays."""
+    import numpy as np
+
+    mock_model = MagicMock()
+    arr1 = np.array([3.0, 4.0, 0.0], dtype=np.float32)
+    arr2 = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    mock_model.passage_embed.return_value = iter([arr1, arr2])
+
+    provider = LocalEmbeddingProvider(
+        model_name="test-model",
+        embedding_dimension=3,
+        model=mock_model,
+    )
+
+    vectors = provider.embed(["Text one", "Text two"], purpose="document")
+
+    assert len(vectors) == 2
+    for v in vectors:
+        assert len(v) == 3
+        for val in v:
+            assert type(val) is float
+            assert not isinstance(val, (np.floating, np.integer))
+
+    assert type(vectors[0][0]) is float
+    assert pytest.approx(vectors[0][0], 0.001) == 0.6
+    assert pytest.approx(vectors[0][1], 0.001) == 0.8
+    assert pytest.approx(vectors[0][2], 0.001) == 0.0
+
+
 @pytest.mark.slow
 def test_local_embedder_real_model_loading() -> None:
     """Verifies real FastEmbed model download and execution. Skipped by default via -m 'not slow'."""
@@ -232,6 +262,7 @@ def test_local_embedder_real_model_loading() -> None:
     vectors = provider.embed(["Test sentence for local ONNX embedding"], purpose="query")
     assert len(vectors) == 1
     assert len(vectors[0]) == 768
+    assert type(vectors[0][0]) is float
     norm = math.sqrt(sum(x * x for x in vectors[0]))
     assert pytest.approx(norm, 0.001) == 1.0
 

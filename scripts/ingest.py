@@ -182,64 +182,72 @@ def execute_dry_run(
 
 def main() -> None:
     """Entry point coordinating live ingestion or dry-run estimation."""
-    args = parse_args()
-    settings = load_settings()
-    pdf_dir = Path(args.pdf_dir)
-
-    pdf_paths = sorted(pdf_dir.glob("*.pdf"))
-    if not pdf_paths:
-        print(f"No PDF files found in '{pdf_dir}'.")
-        return
-
-    if args.dry_run:
-        execute_dry_run(pdf_paths, settings, args.limit_pages)
-        return
-
-    store = ChromaStore(
-        persist_path=settings.storage.vector_store_path,
-        collection_name=settings.storage.collection_name,
-        embedding_provider=settings.embedding.provider,
-        embedding_model=settings.embedding.model,
-        embedding_dimension=settings.embedding.dimension,
-        reset_existing=args.reset,
-    )
-
-    if args.reset:
-        print(f"Collection '{settings.storage.collection_name}' reset successfully.")
-
-    embedder = get_embedder(settings)
-    print(
-        f"Indexing {len(pdf_paths)} document(s) with "
-        f"provider '{settings.embedding.provider}' (model: {settings.embedding.model})..."
-    )
-
     try:
-        summary = index_pdfs(
-            pdf_paths, embedder, store, settings, limit_pages=args.limit_pages
-        )
-    except DailyQuotaExceeded as exc:
-        stored = exc.chunks_stored if exc.chunks_stored is not None else store.count()
-        remaining = exc.chunks_remaining if exc.chunks_remaining is not None else "unknown"
-        if exc.retry_delay and exc.retry_delay > 0:
-            hours = exc.retry_delay / 3600.0
-            resume_msg = f"in roughly {hours:.1f} hours ({exc.retry_delay:.0f}s)"
-        else:
-            resume_msg = "tomorrow when your daily quota resets"
-        print(f"\n[Daily Quota Exceeded] {exc}")
-        print(f"Chunks stored so far: {stored}")
-        print(f"Chunks remaining:     {remaining}")
-        print(f"Estimated resume:     {resume_msg}")
-        print("To resume ingestion, re-run without the --reset flag.")
-        sys.exit(2)
+        args = parse_args()
+        settings = load_settings()
+        pdf_dir = Path(args.pdf_dir)
 
-    print("\n--- Indexing Summary ---")
-    print(f"Pages read:       {summary.pages_read}")
-    print(f"Pages skipped:    {summary.pages_skipped}")
-    print(f"Chunks created:   {summary.chunks_created}")
-    print(f"New chunks added: {summary.chunks_new}")
-    print(f"Chunks skipped:   {summary.chunks_skipped}")
-    print(f"Time taken:       {summary.seconds_taken}s")
-    print(f"Total in store:   {store.count()}")
+        pdf_paths = sorted(pdf_dir.glob("*.pdf"))
+        if not pdf_paths:
+            print(f"No PDF files found in '{pdf_dir}'.")
+            return
+
+        if args.dry_run:
+            execute_dry_run(pdf_paths, settings, args.limit_pages)
+            return
+
+        store = ChromaStore(
+            persist_path=settings.storage.vector_store_path,
+            collection_name=settings.storage.collection_name,
+            embedding_provider=settings.embedding.provider,
+            embedding_model=settings.embedding.model,
+            embedding_dimension=settings.embedding.dimension,
+            reset_existing=args.reset,
+        )
+
+        if args.reset:
+            print(f"Collection '{settings.storage.collection_name}' reset successfully.")
+
+        embedder = get_embedder(settings)
+        print(
+            f"Indexing {len(pdf_paths)} document(s) with "
+            f"provider '{settings.embedding.provider}' (model: {settings.embedding.model})..."
+        )
+
+        try:
+            summary = index_pdfs(
+                pdf_paths, embedder, store, settings, limit_pages=args.limit_pages
+            )
+        except DailyQuotaExceeded as exc:
+            stored = exc.chunks_stored if exc.chunks_stored is not None else store.count()
+            remaining = exc.chunks_remaining if exc.chunks_remaining is not None else "unknown"
+            if exc.retry_delay and exc.retry_delay > 0:
+                hours = exc.retry_delay / 3600.0
+                resume_msg = f"in roughly {hours:.1f} hours ({exc.retry_delay:.0f}s)"
+            else:
+                resume_msg = "tomorrow when your daily quota resets"
+            print(f"\n[Daily Quota Exceeded] {exc}")
+            print(f"Chunks stored so far: {stored}")
+            print(f"Chunks remaining:     {remaining}")
+            print(f"Estimated resume:     {resume_msg}")
+            print("To resume ingestion, re-run without the --reset flag.")
+            sys.exit(2)
+
+        print("\n--- Indexing Summary ---")
+        print(f"Pages read:       {summary.pages_read}")
+        print(f"Pages skipped:    {summary.pages_skipped}")
+        print(f"Chunks created:   {summary.chunks_created}")
+        print(f"New chunks added: {summary.chunks_new}")
+        print(f"Chunks skipped:   {summary.chunks_skipped}")
+        print(f"Time taken:       {summary.seconds_taken}s")
+        print(f"Total in store:   {store.count()}")
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        exc_type = type(exc).__name__
+        msg = str(exc)[:300]
+        print(f"\n[Error] {exc_type}: {msg}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

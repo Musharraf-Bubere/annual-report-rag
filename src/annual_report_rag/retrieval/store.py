@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import chromadb
+import numpy as np
 from chromadb.errors import NotFoundError
 
 from annual_report_rag.ingestion.chunker import Chunk
@@ -133,9 +134,13 @@ class ChromaStore:
             for chunk in chunks
         ]
 
+        converted_vectors: list[list[float]] = (
+            np.asarray(vectors, dtype=np.float32).tolist()
+        )
+
         self.collection.add(
             ids=ids,
-            embeddings=vectors,
+            embeddings=converted_vectors,
             documents=documents,
             metadatas=metadatas,
         )
@@ -157,8 +162,12 @@ class ChromaStore:
         if total_items == 0 or top_k <= 0:
             return []
 
+        converted_vector: list[float] = (
+            np.asarray(vector, dtype=np.float32).tolist()
+        )
+
         results = self.collection.query(
-            query_embeddings=[vector],
+            query_embeddings=[converted_vector],
             n_results=min(top_k, total_items),
         )
 

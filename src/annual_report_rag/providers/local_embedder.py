@@ -1,17 +1,19 @@
 """Local embedding provider using fastembed ONNX runtime."""
 
-import math
 from typing import Any
+
+import numpy as np
 
 from annual_report_rag.providers.base import EmbeddingProvider
 
 
-def l2_normalize(vector: list[float]) -> list[float]:
-    """Scales a vector to unit Euclidean norm."""
-    norm = math.sqrt(sum(val * val for val in vector))
-    if norm == 0.0:
-        return vector
-    return [val / norm for val in vector]
+def l2_normalize(vector: list[float] | Any) -> list[float]:
+    """Scales a vector to unit Euclidean norm, returning standard Python floats."""
+    arr = np.asarray(vector, dtype=np.float32)
+    norm = float(np.linalg.norm(arr))
+    if norm > 0.0:
+        arr = arr / norm
+    return [float(x) for x in arr.tolist()]
 
 
 class LocalEmbeddingProvider(EmbeddingProvider):
@@ -41,7 +43,10 @@ class LocalEmbeddingProvider(EmbeddingProvider):
         texts: list[str],
         purpose: str = "document",
     ) -> list[list[float]]:
-        """Converts texts to normalized embeddings using query or passage methods."""
+        """Converts texts to normalized embeddings using query or passage methods.
+
+        Returns a list of lists containing standard Python float scalars.
+        """
         if not texts:
             return []
 
@@ -57,7 +62,7 @@ class LocalEmbeddingProvider(EmbeddingProvider):
                 f"Unknown purpose: '{purpose}'. Expected 'document' or 'query'."
             )
 
-        raw_embeddings = [list(vec) for vec in raw_iter]
+        raw_embeddings = list(raw_iter)
 
         if len(raw_embeddings) != len(texts):
             raise ValueError(
@@ -67,11 +72,12 @@ class LocalEmbeddingProvider(EmbeddingProvider):
 
         vectors: list[list[float]] = []
         for idx, vec in enumerate(raw_embeddings):
-            if len(vec) != self.embedding_dimension:
+            normed = l2_normalize(vec)
+            if len(normed) != self.embedding_dimension:
                 raise ValueError(
-                    f"Embedding vector at index {idx} has dimension {len(vec)}, "
+                    f"Embedding vector at index {idx} has dimension {len(normed)}, "
                     f"expected {self.embedding_dimension}."
                 )
-            vectors.append(l2_normalize(vec))
+            vectors.append(normed)
 
         return vectors
