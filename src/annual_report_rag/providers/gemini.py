@@ -4,32 +4,20 @@ import math
 import re
 import time
 from collections.abc import Callable
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from google import genai
 from google.genai import errors, types
 
-from annual_report_rag.providers.base import BaseProvider
+from annual_report_rag.providers.base import (
+    BaseProvider,
+    DailyQuotaExceeded,
+    GenerationResult,
+    ProviderError,
+)
 from annual_report_rag.providers.rate_limiter import SlidingWindowRateLimiter
 
 T = TypeVar("T")
-
-
-class DailyQuotaExceeded(Exception):
-    """Raised when the daily API quota has been exhausted."""
-
-    def __init__(
-        self,
-        message: str,
-        retry_delay: float | None = None,
-        chunks_stored: int | None = None,
-        chunks_remaining: int | None = None,
-    ) -> None:
-        """Initializes the quota exception with error message and optional progress state."""
-        super().__init__(message)
-        self.retry_delay = retry_delay
-        self.chunks_stored = chunks_stored
-        self.chunks_remaining = chunks_remaining
 
 
 def l2_normalize(vector: list[float]) -> list[float]:
@@ -95,6 +83,7 @@ class GeminiProvider(BaseProvider):
         embedding_model: str = "gemini-embedding-001",
         generation_model: str = "gemini-3.5-flash-lite",
         embedding_dimension: int = 768,
+        temperature: float | None = None,
         max_items_per_minute: int = 80,
         max_retries: int = 3,
         max_rate_limit_retries: int = 5,
@@ -111,6 +100,7 @@ class GeminiProvider(BaseProvider):
         self.embedding_model = embedding_model
         self.generation_model = generation_model
         self.embedding_dimension = embedding_dimension
+        self.temperature = temperature
         self.max_retries = max_retries
         self.max_rate_limit_retries = max_rate_limit_retries
         self.initial_wait_seconds = initial_wait_seconds
@@ -130,17 +120,21 @@ class GeminiProvider(BaseProvider):
         while True:
             try:
                 return func()
+            except DailyQuotaExceeded:
+                raise
             except Exception as exc:
                 if is_daily_quota_error(exc):
                     delay = extract_retry_delay(exc, default_delay=0.0)
                     raise DailyQuotaExceeded(
-                        f"Daily API quota exceeded ({exc}).",
+                        f"Daily API quota exceeded ({str(exc)[:300]}).",
                         retry_delay=delay if delay > 0.0 else None,
                     ) from exc
 
                 if is_rate_limit_error(exc):
                     if rate_limit_attempts >= self.max_rate_limit_retries:
-                        raise
+                        raise ProviderError(
+                            f"Rate limit retries exhausted: {str(exc)[:300]}"
+                        ) from exc
                     rate_limit_attempts += 1
                     delay = extract_retry_delay(exc) + 1.0
                     print(
@@ -152,7 +146,9 @@ class GeminiProvider(BaseProvider):
 
                 if is_server_error(exc):
                     if server_attempts >= self.max_retries:
-                        raise
+                        raise ProviderError(
+                            f"Server error retries exhausted: {str(exc)[:300]}"
+                        ) from exc
                     server_attempts += 1
                     delay = min(
                         self.max_wait_seconds,
@@ -161,7 +157,9 @@ class GeminiProvider(BaseProvider):
                     self.sleep_fn(delay)
                     continue
 
-                raise
+                raise ProviderError(
+                    f"Gemini provider error ({type(exc).__name__}): {str(exc)[:300]}"
+                ) from exc
 
     def embed(
         self,
@@ -206,12 +204,45 @@ class GeminiProvider(BaseProvider):
 
         return vectors
 
-    def generate(self, prompt: str) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system: str | None = None,
+    ) -> GenerationResult:
         """Generates a text completion for the prompt using configured generation model."""
+        config_kwargs: dict[str, Any] = {}
+        if system is not None:
+            config_kwargs["system_instruction"] = system
+        if self.temperature is not None:
+            config_kwargs["temperature"] = self.temperature
+
+        config = (
+            types.GenerateContentConfig(**config_kwargs)
+            if config_kwargs
+            else None
+        )
+
         response = self._execute_with_retry(
             lambda: self.client.models.generate_content(
                 model=self.generation_model,
                 contents=prompt,
+                config=config,
             )
         )
-        return response.text or ""
+
+        text = response.text or ""
+        usage = getattr(response, "usage_metadata", None)
+        input_tokens = (
+            getattr(usage, "prompt_token_count", None) if usage is not None else None
+        )
+        output_tokens = (
+            getattr(usage, "candidates_token_count", None)
+            if usage is not None
+            else None
+        )
+
+        return GenerationResult(
+            text=text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )

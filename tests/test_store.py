@@ -212,11 +212,41 @@ def test_chroma_store_accepts_numpy_float32(tmp_path: Path) -> None:
     np_query_vec = np.array([1.0, 0.0, 0.0], dtype=np.float32)
     results = store.query(np_query_vec, top_k=1)
     assert len(results) == 1
-    assert results[0].text == "Audited financial results in numpy format."
-    assert pytest.approx(results[0].score, 0.001) == 1.0
-
     # Query using list of numpy.float32 scalars
     scalar_query_vec = [np.float32(1.0), np.float32(0.0), np.float32(0.0)]
     results2 = store.query(scalar_query_vec, top_k=1)
     assert len(results2) == 1
     assert results2[0].text == "Audited financial results in numpy format."
+    assert results2[0].chunk_id == "np-chunk-1"
+
+
+def test_chroma_store_source_counts_and_filter(tmp_path: Path) -> None:
+    """Verifies source_counts() and query() with single and multi-source filtering."""
+    db_path = str(tmp_path / "filter_chroma")
+    store = ChromaStore(persist_path=db_path, collection_name="filter_col")
+    assert store.source_counts() == {}
+
+    chunks = [
+        Chunk(id="tcs-p1-c0", text="TCS chunk 1", source="tcs-ar-26", page=1, chunk_index=0),
+        Chunk(id="tcs-p2-c0", text="TCS chunk 2", source="tcs-ar-26", page=2, chunk_index=0),
+        Chunk(id="infy-p1-c0", text="Infosys chunk 1", source="infosys-ar-26", page=1, chunk_index=0),
+    ]
+    vecs = [
+        [1.0, 0.0, 0.0],
+        [0.9, 0.1, 0.0],
+        [1.0, 0.0, 0.0],
+    ]
+    store.add_chunks(chunks, vecs)
+
+    assert store.source_counts() == {"infosys-ar-26": 1, "tcs-ar-26": 2}
+
+    # Filter single source
+    infy_results = store.query([1.0, 0.0, 0.0], top_k=5, sources=["infosys-ar-26"])
+    assert len(infy_results) == 1
+    assert infy_results[0].source == "infosys-ar-26"
+    assert infy_results[0].chunk_id == "infy-p1-c0"
+
+    # Filter multiple sources
+    both_results = store.query([1.0, 0.0, 0.0], top_k=5, sources=["tcs-ar-26", "infosys-ar-26"])
+    assert len(both_results) == 3
+

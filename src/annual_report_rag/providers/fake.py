@@ -2,7 +2,7 @@
 
 import math
 
-from annual_report_rag.providers.base import BaseProvider
+from annual_report_rag.providers.base import BaseProvider, GenerationResult
 
 
 class FakeProvider(BaseProvider):
@@ -19,6 +19,7 @@ class FakeProvider(BaseProvider):
         self.embedded_texts: list[str] = []
         self.embedded_purposes: list[str] = []
         self.generated_prompts: list[str] = []
+        self.generated_systems: list[str | None] = []
 
     def embed(
         self,
@@ -37,7 +38,16 @@ class FakeProvider(BaseProvider):
             embeddings.append(normed)
         return embeddings
 
-    def generate(self, prompt: str) -> str:
-        """Records prompt and returns pre-configured mock answer."""
+    def generate(
+        self,
+        prompt: str,
+        system: str | None = None,
+    ) -> GenerationResult:
+        """Records prompt and system instruction and returns pre-configured mock answer."""
         self.generated_prompts.append(prompt)
-        return self.default_response
+        self.generated_systems.append(system)
+        return GenerationResult(
+            text=self.default_response,
+            input_tokens=len(prompt.split()),
+            output_tokens=len(self.default_response.split()),
+        )

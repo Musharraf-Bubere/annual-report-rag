@@ -1,5 +1,6 @@
 """Persistent vector store wrapper around ChromaDB."""
 
+import collections
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,6 +21,7 @@ class QueryResult:
     score: float
     extraction_method: str = "default"
     text_quality: str = "clean"
+    chunk_id: str = ""
 
 
 class ChromaStore:
@@ -156,7 +158,23 @@ class ChromaStore:
         """Returns the total number of indexed chunks currently in the store."""
         return self.collection.count()
 
-    def query(self, vector: list[float], top_k: int = 5) -> list[QueryResult]:
+    def source_counts(self) -> dict[str, int]:
+        """Returns the number of indexed chunks per document source."""
+        if self.count() == 0:
+            return {}
+        result = self.collection.get(include=["metadatas"])
+        metadatas = result.get("metadatas") or []
+        counter = collections.Counter(
+            str(meta.get("source", "")) for meta in metadatas if meta
+        )
+        return dict(sorted(counter.items()))
+
+    def query(
+        self,
+        vector: list[float],
+        top_k: int = 5,
+        sources: list[str] | None = None,
+    ) -> list[QueryResult]:
         """Queries the vector store for nearest neighbor chunks using cosine similarity."""
         total_items = self.count()
         if total_items == 0 or top_k <= 0:
@@ -166,20 +184,30 @@ class ChromaStore:
             np.asarray(vector, dtype=np.float32).tolist()
         )
 
+        where_filter: dict[str, Any] | None = None
+        if sources:
+            if len(sources) == 1:
+                where_filter = {"source": sources[0]}
+            else:
+                where_filter = {"source": {"$in": list(sources)}}
+
         results = self.collection.query(
             query_embeddings=[converted_vector],
             n_results=min(top_k, total_items),
+            where=where_filter,
         )
 
+        ids = results.get("ids", [[]])[0]
         docs = results.get("documents", [[]])[0]
         metas = results.get("metadatas", [[]])[0]
         distances = results.get("distances", [[]])[0]
 
         query_results: list[QueryResult] = []
-        for doc, meta, dist in zip(docs, metas, distances, strict=False):
+        for cid, doc, meta, dist in zip(ids, docs, metas, distances, strict=False):
             score = 1.0 - float(dist)
             query_results.append(
                 QueryResult(
+                    chunk_id=str(cid),
                     text=str(doc),
                     source=str(meta.get("source", "")),
                     page=int(meta.get("page", 0)),

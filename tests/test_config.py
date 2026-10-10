@@ -41,6 +41,18 @@ def test_load_default_settings() -> None:
 
     assert settings.generation.provider == "gemini"
     assert settings.generation.model == "gemini-3.5-flash-lite"
+    assert settings.generation.temperature is None
+
+    assert settings.retrieval.top_k == 6
+    assert settings.retrieval.min_score == 0.0
+    assert settings.retrieval.max_question_chars == 1000
+    assert settings.api.cors_origins == ("http://localhost:8501",)
+    assert "tcs-ar-26" in settings.sources
+    assert settings.sources["tcs-ar-26"].display_name == "TCS Integrated Annual Report 2025-26"
+    assert settings.sources["tcs-ar-26"].aliases == ("tcs", "tata consultancy services")
+    assert "infosys-ar-26" in settings.sources
+    assert settings.sources["infosys-ar-26"].display_name == "Infosys Integrated Annual Report 2025-26"
+    assert settings.sources["infosys-ar-26"].aliases == ("infosys",)
 
     assert settings.ingestion.chunk_size == 1000
     assert settings.ingestion.chunk_overlap == 200

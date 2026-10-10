@@ -25,8 +25,11 @@ def run_smoke_test() -> None:
 
     test_prompt = "In one sentence, explain what a corporate annual report is."
     print(f"\n2. Generating completion for prompt: '{test_prompt}'")
-    answer = generator.generate(test_prompt)
-    print(f"   Success! Model answer:\n   \"{answer.strip()}\"")
+    result = generator.generate(test_prompt)
+    print(f'   Success! Model answer:\n   "{result.text.strip()}"')
+    print(
+        f"   Token usage: input={result.input_tokens}, output={result.output_tokens}"
+    )
 
     print("\nSmoke test passed successfully!")
 

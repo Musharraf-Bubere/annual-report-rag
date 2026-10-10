@@ -16,6 +16,7 @@ embedding:
 generation:
   provider: "gemini"            # Generation provider: "gemini" (or "fake" in offline tests)
   model: "gemini-3.5-flash-lite"# Gemini generation model
+  temperature: null             # null = model default (1.0 recommended by Google for Gemini 3.x models)
 
 # PDF chunking and ingestion parameters
 ingestion:
@@ -25,7 +26,26 @@ ingestion:
 
 # Retrieval parameters
 retrieval:
-  top_k: 5                      # Number of top relevant chunks to retrieve
+  top_k: 6                      # Number of top relevant chunks to retrieve (per company when multiple sources match)
+  min_score: 0.0                # Minimum cosine similarity score threshold (0.0 = off, calibrated by eval later)
+  max_question_chars: 1000      # Maximum allowed question length in characters after whitespace stripping
+
+# FastAPI server settings
+api:
+  cors_origins:                 # Allowed CORS origins for frontend UI
+    - "http://localhost:8501"
+
+# Source document registry (display names verified against PDF cover titles: "Integrated Annual Report 2025-26")
+sources:
+  tcs-ar-26:
+    display_name: "TCS Integrated Annual Report 2025-26"
+    aliases:
+      - "tcs"
+      - "tata consultancy services"
+  infosys-ar-26:
+    display_name: "Infosys Integrated Annual Report 2025-26"
+    aliases:
+      - "infosys"
 
 # Storage paths and collection settings
 storage:

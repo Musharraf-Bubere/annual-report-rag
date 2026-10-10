@@ -18,8 +18,11 @@ from annual_report_rag.config import (
 )
 from annual_report_rag.providers.base import (
     BaseProvider,
+    DailyQuotaExceeded,
     EmbeddingProvider,
     GenerationProvider,
+    GenerationResult,
+    ProviderError,
 )
 from annual_report_rag.providers.factory import (
     get_embedder,
@@ -109,14 +112,18 @@ def test_fake_provider_empty_embedding() -> None:
 
 
 def test_fake_provider_generate() -> None:
-    """Verifies that FakeProvider returns configured responses and records prompts."""
+    """Verifies that FakeProvider returns GenerationResult and records prompts and system instructions."""
     expected_answer = "Audited financial disclosure from page 10."
     provider = FakeProvider(default_response=expected_answer)
 
-    result = provider.generate("What was FY23 revenue?")
+    result = provider.generate("What was FY23 revenue?", system="Be strict.")
 
-    assert result == expected_answer
+    assert isinstance(result, GenerationResult)
+    assert result.text == expected_answer
+    assert result.input_tokens is not None
+    assert result.output_tokens is not None
     assert provider.generated_prompts == ["What was FY23 revenue?"]
+    assert provider.generated_systems == ["Be strict."]
 
 
 def test_factory_get_embedder() -> None:
@@ -342,3 +349,66 @@ def test_gemini_embed_validation_dimension_mismatch() -> None:
 
     with pytest.raises(ValueError, match="dimension 128, expected 768"):
         provider.embed(["text1"])
+
+
+def test_gemini_generate_with_system_and_usage() -> None:
+    """Verifies GeminiProvider.generate passes system instruction and extracts token counts."""
+    provider = GeminiProvider(
+        api_key="mock_key",
+        embedding_model="gemini-embedding-001",
+        generation_model="gemini-3.5-flash-lite",
+        temperature=1.0,
+    )
+
+    class MockUsage:
+        prompt_token_count = 120
+        candidates_token_count = 35
+
+    class MockGenResponse:
+        text = "Revenue was ₹2,67,021 crore [1]."
+        usage_metadata = MockUsage()
+
+    captured_kwargs: dict[str, Any] = {}
+
+    def mock_gen_content(**kwargs: Any) -> MockGenResponse:
+        captured_kwargs.update(kwargs)
+        return MockGenResponse()
+
+    provider.client.models.generate_content = mock_gen_content
+
+    res = provider.generate("What was revenue?", system="Answer strictly.")
+    assert isinstance(res, GenerationResult)
+    assert res.text == "Revenue was ₹2,67,021 crore [1]."
+    assert res.input_tokens == 120
+    assert res.output_tokens == 35
+    assert captured_kwargs["model"] == "gemini-3.5-flash-lite"
+    assert captured_kwargs["contents"] == "What was revenue?"
+    assert captured_kwargs["config"].system_instruction == "Answer strictly."
+    assert captured_kwargs["config"].temperature == 1.0
+
+
+def test_gemini_generate_daily_quota_and_provider_error() -> None:
+    """Verifies GeminiProvider.generate raises DailyQuotaExceeded on PerDay 429 and ProviderError on other failures."""
+    provider = GeminiProvider(
+        api_key="mock_key",
+        embedding_model="gemini-embedding-001",
+        generation_model="gemini-3.5-flash-lite",
+        max_retries=0,
+    )
+
+    def raise_daily_quota(**kwargs: Any) -> Any:
+        raise RuntimeError(
+            "429 RESOURCE_EXHAUSTED quotaId GenerateRequestsPerDayPerProjectPerModel-FreeTier retryDelay 3600s"
+        )
+
+    provider.client.models.generate_content = raise_daily_quota
+    with pytest.raises(DailyQuotaExceeded):
+        provider.generate("test")
+
+    def raise_generic_error(**kwargs: Any) -> Any:
+        raise RuntimeError("500 Internal Server Error from upstream")
+
+    provider.client.models.generate_content = raise_generic_error
+    with pytest.raises(ProviderError, match="Gemini provider error"):
+        provider.generate("test")
+

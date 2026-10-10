@@ -98,6 +98,43 @@ uv run python scripts/search_demo.py "What was the total revenue growth?"
 ```
 This embeds your question with retrieval query optimization, queries Chroma using cosine similarity, and displays top-$k$ matches with page numbers, similarity scores, extraction methods, quality status, and excerpt previews.
 
+### Asking Grounded Questions via CLI (`scripts/ask.py`)
+
+Run the full RAG query pipeline (source routing, retrieval, grounded generation with `[n]` citations, and numeric grounding verification) directly from the command line without starting a server:
+```powershell
+uv run python scripts/ask.py "What was TCS's consolidated revenue in fiscal 2026 and its growth?"
+```
+Pass `--show-context` to inspect the full numbered passages sent to the generator:
+```powershell
+uv run python scripts/ask.py "Compare TCS and Infosys revenue growth." --show-context
+```
+
+> [!IMPORTANT]
+> **Why citations say `PDF page N`**: Corporate annual reports include unnumbered cover pages, introductory foldouts, and Roman-numeral prefaces before printed page `1` begins (or omit pages from the PDF file). Because PyMuPDF indexes physical PDF sheets starting at `1`, `PDF page N` refers to the 1-indexed page number in your PDF viewer—which often differs from the printed page number inside the report header/footer (for example, TCS `PDF page 108` carries printed page number `138`, TCS `PDF page 224` carries printed page `254`, and Infosys `PDF page 80` carries printed page `111`). Always navigate to `PDF page N` in your PDF reader when verifying citations.
+
+### Running the FastAPI Service
+
+1. **Start the API server**:
+   ```powershell
+   uv run uvicorn annual_report_rag.api.main:app --reload
+   ```
+   Once running, open **`http://127.0.0.1:8000/docs`** in your browser to explore the interactive Swagger/OpenAPI documentation and test endpoints directly.
+
+2. **Query the API from PowerShell (`Invoke-RestMethod`)**:
+   - Check service readiness and model configuration:
+     ```powershell
+     Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -Method Get
+     ```
+   - Inspect indexed chunk counts per source:
+     ```powershell
+     Invoke-RestMethod -Uri "http://127.0.0.1:8000/sources" -Method Get
+     ```
+   - Ask a grounded question (`POST /ask`):
+     ```powershell
+     $body = @{ question = "How many employees does TCS have?" } | ConvertTo-Json
+     Invoke-RestMethod -Uri "http://127.0.0.1:8000/ask" -Method Post -ContentType "application/json" -Body $body
+     ```
+
 ## Known data quality issues
 
 Corporate annual reports frequently employ stylized typography, custom subsetted fonts, and complex multi-column layouts that introduce extraction defects. Our ingestion pipeline includes an automated quality auditor (`scripts/audit_text_quality.py`), glyph repair table (`ingestion/glyph_repair.py`), and a regression safety harness (`scripts/check_inhibit_regression.py`). Current corpus metrics across 743 examined pages (741 loaded, 2 empty skipped in Infosys):

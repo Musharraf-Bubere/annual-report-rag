@@ -1,7 +1,7 @@
 """Configuration loading and typed settings definition."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -48,10 +48,11 @@ class EmbeddingConfig:
 
 @dataclass(frozen=True)
 class GenerationConfig:
-    """Holds configuration for generation provider and model."""
+    """Holds configuration for generation provider, model, and temperature."""
 
     provider: str
     model: str
+    temperature: float | None = None
 
     @property
     def name(self) -> str:
@@ -75,9 +76,26 @@ class IngestionConfig:
 
 @dataclass(frozen=True)
 class RetrievalConfig:
-    """Holds retrieval search parameters such as top-k results."""
+    """Holds retrieval search parameters such as top-k results, score threshold, and input limit."""
 
-    top_k: int
+    top_k: int = 6
+    min_score: float = 0.0
+    max_question_chars: int = 1000
+
+
+@dataclass(frozen=True)
+class ApiConfig:
+    """Holds FastAPI server configuration such as allowed CORS origins."""
+
+    cors_origins: tuple[str, ...] = ("http://localhost:8501",)
+
+
+@dataclass(frozen=True)
+class SourceMetadata:
+    """Holds human-readable display name and routing aliases for a document source."""
+
+    display_name: str
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -112,7 +130,9 @@ class Settings:
     ingestion: IngestionConfig
     retrieval: RetrievalConfig
     storage: StorageConfig
-    quality: QualityConfig
+    quality: QualityConfig = QualityConfig()
+    api: ApiConfig = ApiConfig()
+    sources: dict[str, SourceMetadata] = field(default_factory=dict)
     gemini_api_key: str | None = None
 
     @property
@@ -142,7 +162,6 @@ def parse_retry_config(retry_data: dict[str, Any]) -> RetryConfig:
 
 def parse_embedding_config(data: dict[str, Any]) -> EmbeddingConfig:
     """Parses embedding provider, model, dimension, and retry configurations."""
-    # Support both new 'embedding' section and legacy 'provider' section
     provider_name = str(data.get("provider", data.get("name", "local")))
     model_name = str(
         data.get("model", data.get("embedding_model", "BAAI/bge-base-en-v1.5"))
@@ -163,14 +182,17 @@ def parse_embedding_config(data: dict[str, Any]) -> EmbeddingConfig:
 
 
 def parse_generation_config(data: dict[str, Any]) -> GenerationConfig:
-    """Parses generation provider and model configurations."""
+    """Parses generation provider, model, and temperature configurations."""
     provider_name = str(data.get("provider", data.get("name", "gemini")))
     model_name = str(
         data.get("model", data.get("generation_model", "gemini-3.5-flash-lite"))
     )
+    raw_temp = data.get("temperature")
+    temperature = float(raw_temp) if raw_temp is not None else None
     return GenerationConfig(
         provider=provider_name,
         model=model_name,
+        temperature=temperature,
     )
 
 
@@ -181,6 +203,48 @@ def parse_ingestion_config(data: dict[str, Any]) -> IngestionConfig:
         chunk_overlap=int(data.get("chunk_overlap", 200)),
         min_page_chars=int(data.get("min_page_chars", 50)),
     )
+
+
+def parse_retrieval_config(data: dict[str, Any]) -> RetrievalConfig:
+    """Parses retrieval parameters into a typed RetrievalConfig instance."""
+    return RetrievalConfig(
+        top_k=int(data.get("top_k", 6)),
+        min_score=float(data.get("min_score", 0.0)),
+        max_question_chars=int(data.get("max_question_chars", 1000)),
+    )
+
+
+def parse_api_config(data: dict[str, Any]) -> ApiConfig:
+    """Parses API server parameters into a typed ApiConfig instance."""
+    raw_origins = data.get("cors_origins", ["http://localhost:8501"])
+    origins = (
+        tuple(str(o) for o in raw_origins)
+        if isinstance(raw_origins, list)
+        else ("http://localhost:8501",)
+    )
+    return ApiConfig(cors_origins=origins)
+
+
+def parse_sources_config(data: dict[str, Any]) -> dict[str, SourceMetadata]:
+    """Parses the sources registry mapping source stems to display names and aliases."""
+    if not isinstance(data, dict):
+        return {}
+    sources: dict[str, SourceMetadata] = {}
+    for stem, meta in data.items():
+        if not isinstance(meta, dict):
+            continue
+        display_name = str(meta.get("display_name", stem))
+        raw_aliases = meta.get("aliases", [])
+        aliases = (
+            tuple(str(a) for a in raw_aliases)
+            if isinstance(raw_aliases, list)
+            else ()
+        )
+        sources[str(stem)] = SourceMetadata(
+            display_name=display_name,
+            aliases=aliases,
+        )
+    return sources
 
 
 def parse_storage_config(data: dict[str, Any]) -> StorageConfig:
@@ -241,8 +305,10 @@ def load_settings(
         embedding=parse_embedding_config(raw_emb),
         generation=parse_generation_config(raw_gen),
         ingestion=parse_ingestion_config(data.get("ingestion", {})),
-        retrieval=RetrievalConfig(top_k=int(data.get("retrieval", {}).get("top_k", 5))),
+        retrieval=parse_retrieval_config(data.get("retrieval", {})),
         storage=parse_storage_config(data.get("storage", {})),
         quality=parse_quality_config(data.get("quality", {})),
+        api=parse_api_config(data.get("api", {})),
+        sources=parse_sources_config(data.get("sources", {})),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
     )
