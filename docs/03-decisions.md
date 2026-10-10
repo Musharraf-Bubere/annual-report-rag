@@ -452,4 +452,55 @@ This document captures key design decisions, their rationale, alternatives consi
 * **Reason:** Creating clients once at startup eliminates per-request model initialization overhead and allows `app.dependency_overrides[get_container]` in offline `TestClient` tests. Using plain `def` tells FastAPI/Starlette to run the blocking ONNX and Gemini SDK calls in an external worker threadpool rather than freezing the main asyncio event loop. Deferring streaming keeps citation resolution (`resolve_citations`) and numeric verification (`find_unsupported_numbers`) atomic on the complete answer before returning to the client.
 * **Trade-off:** Clients wait ~1–2.5 seconds for the full response rather than seeing incremental tokens.
 
+---
+
+### Decision 36: Two Retrieval Labels (`page_hit@k` vs. `text_hit@k`) and Multi-Source Hit Rule
+
+* **Context:** A single annual report PDF page (`~3,000–5,000` characters) is split into multiple overlapping `1,000`-character chunks (`chunk_index = 0, 1, 2, ...`). Evaluating retrieval solely by whether an expected `(source, page)` appeared in the top $k$ (`page_hit@k`) can report a `1.0000` hit rate even when the specific chunk on that page containing the target number ranked outside the top $k$ (or had its token dropped on a degraded page).
+* **Choice:** Track two complementary retrieval labels on answerable questions:
+  1. **`page_hit@k` (`@1`, `@3`, `@6`)**: Requires at least one expected `(source, page)` in the top $k$ **from each source that has expected pages** (so a two-company comparison question only counts as a hit if both companies' expected pages appear in the top $k$).
+  2. **`text_hit@6`**: Checks whether any chunk in the top 6 contains a normalized numeric token or substring satisfying a `must_contain` entry.
+* **Reason:** On `baseline-v0`, `page_hit@6` is `1.0000` (`9/9`) while `text_hit@6` is `0.7778` (`7/9`), immediately pinpointing that `q03` (TCS dividend) and `q05` (TCS net profit margin) retrieved the right PDF pages (`p36` and `p58`) but missed the specific chunk or token holding `110` and `19.8`.
+* **Trade-off:** `text_hit@6` is a weak lexical signal—a short number could match an unrelated figure on another retrieved chunk—so both metrics must be read together.
+
+---
+
+### Decision 37: Exact Numeric Token Matching (Why `"11,000%"` Must Not Match `"110"`)
+
+* **Context:** Naive substring matching on `must_contain` entries causes severe false positives on financial numbers: for example, checking `"110" in answer` falsely marks `"The dividend is 11,000% of the paid-up value [3]"` as `CORRECT` for `q03` (`must_contain: ["110"]`). At the same time, Indian comma grouping (`"5,84,519"`, `"₹2,67,021"`) and Western comma grouping (`"584,519"`, `"267,021"`) represent the exact same number.
+* **Choice:**
+  1. Strip citation markers (`[1]`, `[1][3]`, `[1, 3]`) before any matching so bracket numbers never collide with financial figures.
+  2. Extract numbers with `numeric_tokens(text)` (`\d+(?:,\d+)*(?:\.\d+)?`) and remove commas so `"5,84,519"`, `"584,519"`, and `"₹2,67,021"` normalize to `"584519"` and `"267021"`, and `"4.6%"` gives `"4.6"`.
+  3. Match numeric `must_contain` entries by **exact normalized token equality** (`"110" != "11000"`), while matching non-numeric entries by case-insensitive substring (supporting `"a|b"` any-of syntax).
+* **Reason:** Eliminates substring false positives (`"11,000%"` $\neq$ `"110"`) while remaining invariant to Indian vs. Western comma formatting and currency/percent prefixes/suffixes.
+
+---
+
+### Decision 38: Five Deterministic Outcome Types Across Answerable, Unanswerable, and Adversarial Questions
+
+* **Context:** Collapsing evaluation outcomes into a binary `pass/fail` hides the critical operational distinction between a system that **hallucinates or quotes the wrong figure** (`WRONG` / `ANSWERED_ANYWAY`) and a system that **conservatively refuses when context is missing** (`FALSE_REFUSAL`).
+* **Choice:** Classify every question into one of five mutually exclusive outcomes (`evaluation/metrics.py`):
+  - Answerable questions (`fact`, `comparison`): `CORRECT`, `WRONG`, or `FALSE_REFUSAL` (when the answer equals `NOT_FOUND_MESSAGE`).
+  - Unanswerable and adversarial questions: `CORRECT_REFUSAL` or `ANSWERED_ANYWAY` (any `must_not_contain` hit on an adversarial question forces `ANSWERED_ANYWAY`).
+* **Reason:** In financial QA, a `FALSE_REFUSAL` is a recall gap (safe failure mode), whereas `WRONG` or `ANSWERED_ANYWAY` is a precision/safety failure. Tracking them separately guides whether to fix retrieval recall or generation prompting.
+
+---
+
+### Decision 39: Content-Addressed Evaluation Cache Keyed with `ChromaStore.fingerprint()`
+
+* **Context:** Running iterative evaluation experiments on the Gemini free tier can quickly burn daily generation quotas if unchanged questions re-query the LLM on every run. However, a naive cache keyed only by `question_id` would return stale answers after prompt edits, config changes, or vector store re-indexing.
+* **Choice:** Cache `AnswerResult` payloads in `data/eval/cache/` (gitignored) keyed by the SHA-256 of `(question.id, question.question, settings_hash, prompt_hash, store.fingerprint())`, where `ChromaStore.fingerprint()` hashes all sorted `(chunk_id, sha256(chunk_text))` pairs in the collection.
+* **Reason:** Identical pipeline runs cost **zero Gemini API calls**, while any change to non-secret settings, `SYSTEM_PROMPT`, question text, or indexed chunks automatically invalidates the cache.
+
+---
+
+### Decision 40: Zero PDF or Chunk Text in Committed Evaluation Reports
+
+* **Context:** Just as raw PDFs (`data/raw/`) and processed diagnostics (`data/processed/`) are gitignored to respect corporate copyright and keep the repository lean, evaluation artifacts must not leak verbatim annual report excerpts into git history.
+* **Choice:** Split evaluation outputs into two tiers:
+  1. `data/eval/runs/<timestamp>_<label>.json` (**gitignored**): Full diagnostic detail including retrieved chunk text and generated prose.
+  2. `data/eval/results/<timestamp>_<label>.md` and `.metrics.json` (**committed**): Aggregate metrics, latency percentiles, quality slices, and per-question metadata outcomes (`source`, `page`, `score`, `outcome`) with **zero chunk text and zero PDF text**.
+* **Reason:** Allows committing reproducible benchmark reports and comparing runs via `scripts/compare_runs.py` without committing copyrighted report text.
+
+
 

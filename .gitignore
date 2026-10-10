@@ -6,6 +6,8 @@
 # Raw data (financial reports contain raw PDFs / files)
 data/raw/
 data/processed/
+data/eval/runs/
+data/eval/cache/
 
 # Vector database storage
 chroma_db/

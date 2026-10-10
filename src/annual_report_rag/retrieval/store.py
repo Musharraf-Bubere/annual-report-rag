@@ -169,6 +169,38 @@ class ChromaStore:
         )
         return dict(sorted(counter.items()))
 
+    def fingerprint(self) -> str:
+        """Computes a deterministic read-only SHA-256 fingerprint over all chunk IDs and text hashes."""
+        import hashlib
+
+        if self.count() == 0:
+            return hashlib.sha256(b"empty").hexdigest()
+        result = self.collection.get(include=["documents"])
+        ids = result.get("ids") or []
+        docs = result.get("documents") or []
+        pairs = sorted(
+            (
+                str(cid),
+                hashlib.sha256(str(doc).encode("utf-8")).hexdigest(),
+            )
+            for cid, doc in zip(ids, docs, strict=False)
+        )
+        payload = "|".join(f"{cid}:{doc_hash}" for cid, doc_hash in pairs)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def page_text_quality(self, source: str, page: int) -> str | None:
+        """Returns the text_quality of a (source, page) if chunks exist in the store, or None otherwise."""
+        if self.count() == 0:
+            return None
+        result = self.collection.get(
+            where={"$and": [{"source": source}, {"page": int(page)}]},
+            include=["metadatas"],
+        )
+        metadatas = result.get("metadatas") or []
+        if not metadatas or not metadatas[0]:
+            return None
+        return str(metadatas[0].get("text_quality", "clean"))
+
     def query(
         self,
         vector: list[float],

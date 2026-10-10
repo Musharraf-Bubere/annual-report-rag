@@ -172,3 +172,45 @@ Corporate annual reports frequently employ stylized typography, custom subsetted
 
 4. **Visual OCR Deferred**:
    - Visual OCR (e.g. Tesseract) to reconstruct words from the 30 degraded pages is deferred to a future phase to maintain a lean, high-throughput native extraction pipeline for the 95.8% clean corpus.
+
+## Evaluation (`baseline-v0`)
+
+The repository includes a deterministic evaluation harness (`src/annual_report_rag/evaluation/`) and a 12-question golden seed set (`data/eval/golden_questions.json`) covering factual lookups, cross-company comparisons, out-of-scope unanswerable queries, and adversarial prompt-injection probes. See [`docs/06-evaluation.md`](docs/06-evaluation.md) for full documentation on metrics, golden set rules, and limitations.
+
+### Running the Evaluation Harness
+
+1. **Validate `golden_questions.json` and check expected pages in ChromaDB (offline, zero API calls)**:
+   ```powershell
+   uv run python scripts/run_eval.py --validate-only
+   ```
+2. **Run retrieval-only evaluation (offline, zero API calls)**:
+   ```powershell
+   uv run python scripts/run_eval.py --retrieval-only --label baseline-v0-retrieval
+   ```
+3. **Run full evaluation (cached in `data/eval/cache/` keyed by question, settings, prompt, and store fingerprint)**:
+   ```powershell
+   uv run python scripts/run_eval.py --label baseline-v0
+   ```
+4. **Compare two evaluation runs**:
+   ```powershell
+   uv run python scripts/compare_runs.py data/eval/results/<runA>.metrics.json data/eval/results/<runB>.metrics.json
+   ```
+
+### Baseline v0 Summary (`12` seed questions: `9` answerable, `3` unanswerable/adversarial)
+
+> [!WARNING]
+> **Preliminary Benchmark**: Evaluated on $n = 12$ seed questions (`human_verified = false`). Full committed reports are in [`data/eval/results/`](data/eval/results/).
+
+| Metric Category | Metric | `baseline-v0` Value |
+| :--- | :--- | :--- |
+| **Retrieval ($n=9$ answerable)** | `page_hit@1` / `page_hit@3` / `page_hit@6` | `0.4444` / `0.6667` / `1.0000` |
+| **Retrieval ($n=9$ answerable)** | `MRR` / `text_hit@6` | `0.6519` / `0.7778` |
+| **Answer Outcomes ($n=12$)** | `CORRECT` / `WRONG` / `FALSE_REFUSAL` | `6` / `1` / `2` |
+| **Refusal & Safety ($n=3$)** | `CORRECT_REFUSAL` / `ANSWERED_ANYWAY` | `3` / `0` |
+| **Grounding & Numbers** | `grounded_rate` (answerable) / `unsupported_numbers` | `0.7778` / `0` |
+| **Quality Slice: `all_clean` ($n=4$)** | `page_hit@6` / `MRR` / `text_hit@6` / `CORRECT` | `1.0000` / `0.8750` / `1.0000` / `4/4` |
+| **Quality Slice: `mixed` ($n=1$)** | `page_hit@6` / `MRR` / `text_hit@6` / `CORRECT` | `1.0000` / `0.5000` / `1.0000` / `1/1` |
+| **Quality Slice: `all_degraded` ($n=4$)** | `page_hit@6` / `MRR` / `text_hit@6` / `CORRECT` | `1.0000` / `0.4667` / `0.5000` / `1/4` |
+| **Latency (`p50` / `p95`)** | `retrieve_ms` / `generate_ms` / `total_ms` | `30.86 / 92.71 ms` \| `1025.96 / 8850.71 ms` \| `1054.59 / 8886.28 ms` |
+| **Token Usage** | `avg_input_tokens` / `avg_output_tokens` | `2073.9` / `32.0` |
+

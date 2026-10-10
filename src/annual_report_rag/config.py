@@ -122,6 +122,15 @@ class QualityConfig:
 
 
 @dataclass(frozen=True)
+class EvaluationConfig:
+    """Holds evaluation harness configuration and optional token pricing."""
+
+    golden_set_path: str = "data/eval/golden_questions.json"
+    price_per_million_input_usd: float | None = None
+    price_per_million_output_usd: float | None = None
+
+
+@dataclass(frozen=True)
 class Settings:
     """Aggregates all application configurations and secrets into a single typed object."""
 
@@ -133,6 +142,7 @@ class Settings:
     quality: QualityConfig = QualityConfig()
     api: ApiConfig = ApiConfig()
     sources: dict[str, SourceMetadata] = field(default_factory=dict)
+    evaluation: EvaluationConfig = EvaluationConfig()
     gemini_api_key: str | None = None
 
     @property
@@ -286,6 +296,21 @@ def parse_quality_config(data: dict[str, Any]) -> QualityConfig:
     )
 
 
+def parse_evaluation_config(data: dict[str, Any]) -> EvaluationConfig:
+    """Parses evaluation harness and optional token pricing settings."""
+    if not isinstance(data, dict):
+        return EvaluationConfig()
+    raw_in = data.get("price_per_million_input_usd")
+    raw_out = data.get("price_per_million_output_usd")
+    return EvaluationConfig(
+        golden_set_path=str(
+            data.get("golden_set_path", "data/eval/golden_questions.json")
+        ),
+        price_per_million_input_usd=float(raw_in) if raw_in is not None else None,
+        price_per_million_output_usd=float(raw_out) if raw_out is not None else None,
+    )
+
+
 def load_settings(
     config_path: Path | str = "config/settings.yaml",
     env_path: Path | str = ".env",
@@ -310,5 +335,6 @@ def load_settings(
         quality=parse_quality_config(data.get("quality", {})),
         api=parse_api_config(data.get("api", {})),
         sources=parse_sources_config(data.get("sources", {})),
+        evaluation=parse_evaluation_config(data.get("evaluation", {})),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
     )

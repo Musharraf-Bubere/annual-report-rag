@@ -296,4 +296,39 @@ We mitigate this through defense-in-depth:
 1. **`def` vs. `async def` for Blocking I/O and CPU Work**: In FastAPI/Starlette, an `async def` route runs directly on the single main asyncio event loop thread. Because `LocalEmbeddingProvider.embed()` runs CPU-bound ONNX inference, `ChromaStore.query()` performs synchronous SQLite/HNSW calls, and `GeminiProvider.generate()` uses the synchronous `client.models.generate_content()` call, putting them inside an `async def` handler would block the entire event loop—preventing concurrent `/health` checks or parallel requests from being served. Defining the routes with plain `def` instructs FastAPI to execute them in an external worker threadpool (`anyio.to_thread.run_sync`), keeping the event loop responsive.
 2. **Lifespan Singletons**: Loading the ONNX embedding model (`BAAI/bge-base-en-v1.5`) and opening the persistent Chroma collection takes ~1–1.5 seconds and ~250MB of RAM. Instantiating them once inside FastAPI's `@asynccontextmanager def lifespan(app)` and injecting via `Depends(get_container)` amortizes startup cost across all requests and enables clean dependency overrides (`app.dependency_overrides[get_container]`) during offline `TestClient` tests.
 
+---
+
+## Phase 4a: Deterministic Evaluation Harness & Baseline v0
+
+### Question 33: What is the difference between `hit@k` (`page_hit@k`, `text_hit@k`) and `MRR`, and why report both?
+**Answer:**
+- **`hit@k` (Recall Indicator at Cutoff $k$)**: Measures whether at least one relevant item appears anywhere in the top $k$ retrieved chunks (binary `0` or `1` per query, averaged across queries). In our harness, we track both `page_hit@k` (whether an expected `(source, page)` from **every** expected source appears in the top $k$) and `text_hit@6` (whether the target `must_contain` number/token actually appears in the top 6 chunks). Because a single PDF page spans multiple chunks (`chunk_index = 0, 1, 2...`), `page_hit@6` can be `1.0000` while `text_hit@6` is `0.7778`—exposing cases (`q03`, `q05`) where the right page was retrieved, but the specific chunk on that page holding the number missed the top 6.
+- **`MRR` (Mean Reciprocal Rank — Ranking Quality)**: Averages $\frac{1}{\text{rank}}$ of the first expected page. While `page_hit@6` treats rank 1 and rank 6 identically, `MRR` rewards placing the authoritative page at the very top (`1.0` for rank 1 vs. `0.1667` for rank 6). On `baseline-v0`, `all_clean` pages achieved `MRR = 0.8750`, whereas `all_degraded` pages dropped to `MRR = 0.4667` even though both had `page_hit@6 = 1.0000`—proving that font degradation pushes relevant pages lower in the ranking.
+
+---
+
+### Question 34: Why distinguish `FALSE_REFUSAL` from `WRONG` on answerable questions, and `CORRECT_REFUSAL` from `ANSWERED_ANYWAY` on unanswerable ones?
+**Answer:**
+In financial and enterprise RAG, **not all errors have equal cost**:
+1. **`FALSE_REFUSAL` (Conservative Recall Miss)**: The answer exists in the annual report, but the system returned `"I could not find this in the provided reports."` On `baseline-v0`, `q04` (TCS net income) and `q05` (TCS net profit margin) were `FALSE_REFUSAL`s because degraded table headers or missing top-6 chunks prevented the model from confirming the label. While this hurts recall, the system **did not lie** to the analyst.
+2. **`WRONG` / `ANSWERED_ANYWAY` (Precision or Safety Failure)**: The system either stated an incomplete/incorrect answer (`q03` quoting `11,000%` of paid-up value when the question needed the `₹110` per-share dividend) or failed to refuse an out-of-corpus/adversarial prompt. Separating `FALSE_REFUSAL` from `WRONG` tells us whether an error is a retrieval/extraction recall problem or a hallucination/grounding problem.
+
+---
+
+### Question 35: Why should golden evaluation sets be human-written and human-verified rather than purely LLM-generated from chunks?
+**Answer:**
+Generating evaluation questions by feeding indexed chunks to an LLM creates **circular, over-optimistic benchmarks**:
+1. **Shared Vocabulary Bias**: LLM-generated questions copy the exact phrasing of the chunk, inflating dense retrieval `hit@k` compared to how real analysts ask questions (e.g., an analyst asks for *"net income"* on `q04`, whereas the Indian annual report table says *"Profit for the year attributable to shareholders"*).
+2. **Blindness to Ingestion Drops**: An LLM generating questions from indexed chunks can only ask about text that survived extraction. If a number (`₹110ͬ-` on TCS page 8) was dropped during PDF glyph filtering, a chunk-generated eval set will never test it—hiding data loss behind a 100% score.
+3. **Explicit Verification Tracking**: Every question in `data/eval/golden_questions.json` carries a `human_verified` boolean, and our Markdown reports emit a prominent `PRELIMINARY RESULTS` warning whenever sample size $< 30$ or any item has `human_verified=false`.
+
+---
+
+### Question 36: What are "weak labels" (`must_contain`) in deterministic RAG evaluation, and what are their trade-offs?
+**Answer:**
+Deterministic `must_contain` labels (such as requiring normalized numeric token `"267021"` and `"4.6"` for TCS FY26 revenue growth) are **weak labels**: they check necessary lexical conditions rather than full semantic equivalence.
+- **Advantages**: Fast, 100% deterministic, zero API cost, immune to LLM-judge bias, and when implemented with exact numeric token equality (`"11,000%"` $\to$ `"11000"` $\neq$ `"110"`), they catch missing figures without substring false positives.
+- **Limitations**: A weak label cannot verify that `"4.6%"` in the answer is attached to the right metric or fiscal year (e.g., if a perverse answer said *"Revenue was not 267,021 crore and growth was not 4.6%"*, `must_contain` would still match). That is why production RAG evaluation pairs deterministic lexical/numeric checks (Phase 4a) with an LLM-as-a-judge faithfulness/relevance check (Phase 4b).
+
+
 

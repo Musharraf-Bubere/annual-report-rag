@@ -66,3 +66,10 @@ quality:
   # that must never be dropped by the token filter, even on degraded pages.
   keep_tokens:
     - "Mondelēz"
+
+# Evaluation harness and token pricing settings (fill from official Google pricing page; null = omit cost)
+evaluation:
+  golden_set_path: "data/eval/golden_questions.json"
+  price_per_million_input_usd: null
+  price_per_million_output_usd: null
+

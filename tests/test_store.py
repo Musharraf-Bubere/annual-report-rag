@@ -250,3 +250,44 @@ def test_chroma_store_source_counts_and_filter(tmp_path: Path) -> None:
     both_results = store.query([1.0, 0.0, 0.0], top_k=5, sources=["tcs-ar-26", "infosys-ar-26"])
     assert len(both_results) == 3
 
+
+def test_chroma_store_fingerprint_and_page_text_quality(tmp_path: Path) -> None:
+    """Verifies that fingerprint() changes when chunks change and page_text_quality() queries read-only."""
+    db_path = str(tmp_path / "fp_chroma")
+    store = ChromaStore(persist_path=db_path, collection_name="fp_col")
+
+    fp_empty = store.fingerprint()
+    assert isinstance(fp_empty, str)
+    assert len(fp_empty) == 64
+    assert store.page_text_quality("tcs-ar-26", 8) is None
+
+    c1 = Chunk(
+        id="tcs-p8-c0",
+        text="Revenue 267,021 crore.",
+        source="tcs-ar-26",
+        page=8,
+        chunk_index=0,
+        text_quality="degraded",
+    )
+    c2 = Chunk(
+        id="infy-p26-c0",
+        text="Revenue growth 9.6%.",
+        source="infosys-ar-26",
+        page=26,
+        chunk_index=0,
+        text_quality="clean",
+    )
+    store.add_chunks([c1], [[1.0, 0.0]])
+    fp_one = store.fingerprint()
+    assert fp_one != fp_empty
+    assert store.fingerprint() == fp_one
+
+    store.add_chunks([c2], [[0.0, 1.0]])
+    fp_two = store.fingerprint()
+    assert fp_two != fp_one
+
+    assert store.page_text_quality("tcs-ar-26", 8) == "degraded"
+    assert store.page_text_quality("infosys-ar-26", 26) == "clean"
+    assert store.page_text_quality("infosys-ar-26", 999) is None
+
+
