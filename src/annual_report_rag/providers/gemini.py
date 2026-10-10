@@ -15,6 +15,23 @@ from annual_report_rag.providers.rate_limiter import SlidingWindowRateLimiter
 T = TypeVar("T")
 
 
+class DailyQuotaExceeded(Exception):
+    """Raised when the daily API quota has been exhausted."""
+
+    def __init__(
+        self,
+        message: str,
+        retry_delay: float | None = None,
+        chunks_stored: int | None = None,
+        chunks_remaining: int | None = None,
+    ) -> None:
+        """Initializes the quota exception with error message and optional progress state."""
+        super().__init__(message)
+        self.retry_delay = retry_delay
+        self.chunks_stored = chunks_stored
+        self.chunks_remaining = chunks_remaining
+
+
 def l2_normalize(vector: list[float]) -> list[float]:
     """Applies L2 normalization to scale a vector to unit Euclidean norm."""
     norm = math.sqrt(sum(val * val for val in vector))
@@ -46,6 +63,15 @@ def extract_retry_delay(exc: Exception, default_delay: float = 27.0) -> float:
     return default_delay
 
 
+def is_daily_quota_error(exc: Exception) -> bool:
+    """Checks whether an exception indicates daily quota exhaustion."""
+    msg = str(exc)
+    if "perday" in msg.lower() or "per_day" in msg.lower():
+        return True
+    delay = extract_retry_delay(exc, default_delay=0.0)
+    return delay > 300.0
+
+
 def is_rate_limit_error(exc: Exception) -> bool:
     """Checks whether an exception indicates HTTP 429 rate limit exhaustion."""
     if isinstance(exc, errors.APIError) and exc.code == 429:
@@ -66,8 +92,8 @@ class GeminiProvider(BaseProvider):
     def __init__(
         self,
         api_key: str | None,
-        embedding_model: str,
-        generation_model: str,
+        embedding_model: str = "gemini-embedding-001",
+        generation_model: str = "gemini-3.5-flash-lite",
         embedding_dimension: int = 768,
         max_items_per_minute: int = 80,
         max_retries: int = 3,
@@ -105,6 +131,13 @@ class GeminiProvider(BaseProvider):
             try:
                 return func()
             except Exception as exc:
+                if is_daily_quota_error(exc):
+                    delay = extract_retry_delay(exc, default_delay=0.0)
+                    raise DailyQuotaExceeded(
+                        f"Daily API quota exceeded ({exc}).",
+                        retry_delay=delay if delay > 0.0 else None,
+                    ) from exc
+
                 if is_rate_limit_error(exc):
                     if rate_limit_attempts >= self.max_rate_limit_retries:
                         raise

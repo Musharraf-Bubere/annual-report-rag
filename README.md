@@ -11,7 +11,7 @@ Follow these steps to set up and verify the environment:
    uv sync
    ```
 
-2. **Configure environment variables**:
+2. **Configure environment variables (needed for answer generation)**:
    Copy `.env.example` to `.env` and insert your Gemini API key:
    - On Windows (PowerShell):
      ```powershell
@@ -22,9 +22,11 @@ Follow these steps to set up and verify the environment:
      cp .env.example .env
      ```
    Then open `.env` and set `GEMINI_API_KEY=your_actual_key`.
+   > [!NOTE]
+   > Document ingestion runs locally by default using FastEmbed ONNX and does **not** require an API key or external network calls. The `GEMINI_API_KEY` is only needed when generating answers or if switching the embedding provider to Gemini.
 
 3. **Run the smoke test**:
-   Verify your API key, embeddings, and response generation:
+   Verify your local embedder and Gemini response generation:
    ```bash
    uv run python scripts/smoke_test.py
    ```
@@ -51,24 +53,42 @@ Place your source annual report PDF files inside the `data/raw/` directory (for 
    ```
 
 3. **Dry-run estimation (no API calls or costs)**:
-   Parse and chunk documents to preview page counts, chunk counts, estimated embedding calls, and estimated runtime:
+   Parse and chunk documents to preview page counts, quality breakdown, repaired glyphs, and chunk volume:
    ```bash
    uv run python scripts/ingest.py --dry-run
    ```
 
-4. **Trial run with limited pages**:
-   Test end-to-end embedding on just the first 5 pages of each PDF:
-   ```bash
-   uv run python scripts/ingest.py --limit-pages 5
-   ```
-
-5. **Full ingestion into Chroma vector store**:
-   Idempotently embed all new chunks in rate-paced batches (default 20 chunks, max 80 items/min) and persist to ChromaDB:
+4. **Full ingestion into Chroma vector store (Local FastEmbed, zero API cost)**:
+   Idempotently embed all chunks locally using ONNX `BAAI/bge-base-en-v1.5` (768 dimensions) and persist to ChromaDB:
    ```bash
    uv run python scripts/ingest.py
    ```
    > [!TIP]
-   > On the Google Gemini free tier (capped at 100 requests/minute), full ingestion of ~3,100 chunks takes approximately **35–45 minutes**. You can interrupt the run at any point (Ctrl+C) and resume later; previously indexed chunks are detected and skipped in milliseconds without repeating API calls. To wipe and rebuild the index from scratch, pass the `--reset` flag.
+   > Full ingestion of ~3,109 chunks runs locally on CPU in **under 60 seconds** with zero API keys or rate limits. To wipe and rebuild the index from scratch, pass the `--reset` flag:
+   > ```bash
+   > uv run python scripts/ingest.py --reset
+   > ```
+
+### Switching to Gemini Embeddings & Daily Quota Limits
+
+To switch from local FastEmbed to cloud-based Gemini embeddings:
+1. Open `config/settings.yaml` and update the `embedding` block:
+   ```yaml
+   embedding:
+     provider: "gemini"
+     model: "gemini-embedding-001"
+     dimension: 768
+     batch_size: 20
+     max_items_per_minute: 80
+   ```
+2. Re-index the store with `--reset`:
+   ```bash
+   uv run python scripts/ingest.py --reset
+   ```
+
+> [!WARNING]
+> **Free-Tier Daily Quota Limit**: On the Google Gemini free tier, the embedding API enforces a hard ceiling of **1,000 requests per day** (`quotaId: EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier`). Full ingestion of ~3,109 chunks exhausts the daily free quota around ~800 chunks with a ~21-hour backoff delay.
+> Our ingestion pipeline detects daily quota exhaustion immediately (`DailyQuotaExceeded`), prints chunks stored vs remaining, and exits cleanly with exit code 2. You can safely resume next day by running `uv run python scripts/ingest.py` without `--reset`.
 
 ### Running the Search Demo
 
@@ -80,7 +100,7 @@ This embeds your question with retrieval query optimization, queries Chroma usin
 
 ## Known data quality issues
 
-Corporate annual reports frequently employ stylized typography, custom subsetted fonts, and complex multi-column layouts that introduce extraction defects. Our ingestion pipeline includes an automated quality auditor (`scripts/audit_text_quality.py`) and a regression safety harness (`scripts/check_inhibit_regression.py`). Current corpus metrics across 743 examined pages (741 loaded, 2 empty skipped in Infosys):
+Corporate annual reports frequently employ stylized typography, custom subsetted fonts, and complex multi-column layouts that introduce extraction defects. Our ingestion pipeline includes an automated quality auditor (`scripts/audit_text_quality.py`), glyph repair table (`ingestion/glyph_repair.py`), and a regression safety harness (`scripts/check_inhibit_regression.py`). Current corpus metrics across 743 examined pages (741 loaded, 2 empty skipped in Infosys):
 
 | Metric | Infosys (`infosys-ar-26.pdf`) | TCS (`tcs-ar-26.pdf`) | Total Corpus |
 | :--- | :--- | :--- | :--- |
@@ -88,9 +108,13 @@ Corporate annual reports frequently employ stylized typography, custom subsetted
 | **Pages Loaded ($\ge 50$ chars)** | 381 | 360 | 741 |
 | **Default Extraction Pages** | 381 (100%) | 325 (90.3%) | 706 (95.3%) |
 | **Inhibit Spaces Pages** | 0 (0.0%) | 35 (9.7%) | 35 (4.7%) |
-| **Degraded Quality Pages** | 0 (0.0%) | 17 (4.7%) | 17 (2.3%) |
+| **Text Quality: Clean Pages** | 381 (100%) | 329 (91.4%) | 710 (95.8%) |
+| **Text Quality: Repaired Pages** | 0 (0.0%) | 1 (0.3%) | 1 (0.1%) |
+| **Text Quality: Degraded Pages** | 0 (0.0%) | 30 (8.3%) | 30 (4.1%) |
+| **Repaired Characters** | 0 | 429 | 429 |
+| **Dropped Corrupted Tokens** | 0 | 227 | 227 |
 | **Total Chunks Generated** | 1,684 | 1,425 | 3,109 |
-| **Chunks with U+0100-U+052F** | 1 (0.06%) | 18 (1.26%) | 19 (0.61%) |
+| **Chunks with U+0100-U+052F** | 3 (0.18%) | 0 (0.00%) | 3 (0.10%) |
 
 ### Specific Quality Findings
 
@@ -99,11 +123,15 @@ Corporate annual reports frequently employ stylized typography, custom subsetted
    - Our **per-page best-of extractor** automatically routes these 35 pages to `PyMuPDF` with `TEXT_INHIBIT_SPACES`, healing them into `"Fortune Magazine"`, `"584,519"`, and `"44,000+"`.
    - The other 706 pages remain on standard default extraction, protecting clean pages from word-gluing regressions.
 
-2. **Irrecoverable Font CMap Corruption (Filtered & Gated)**:
-   - 17 TCS pages (Pages 8, 22, 23, 24, 36, 37, 48, 51, 56, 58, 59, 69, 70, 83, 130, 170, 173) contain severe font encoding defects (`odd_char_count >= 15`) in the embedded font `HouschkaRounded-DemiBold`. Visual glyphs map to incorrect Unicode points in the Latin Extended and Greek blocks (`\u0100` to `\u052F`, such as Greek Yot `ϳ` for digit `7`, and `Đ` for `C`).
-   - On these 17 pages, corrupted tokens are filtered out, the chunks are marked `text_quality = "degraded"`, and defect details are logged to `data/processed/degraded_pages.csv`. Surrounding clean text (such as Chairman Chandrasekaran's letter on AI) remains intact.
-   - **Allowlisting & False Positive Prevention**: On `infosys-ar-26` page 5, the client brand name `"Mondelēz"` contains the accented character `ē` (`\u0113`). Because page 5 has only 6 odd characters ($< 15$), it is left untouched and marked `"clean"`. Furthermore, `"Mondelēz"` is allowlisted in `settings.yaml` under `quality.keep_tokens` so that it is never dropped even on degraded pages.
-   - **Residual Characters Below Threshold**: 14 TCS pages have minor font artifacts below the threshold (1 to 13 odd characters, appearing in 18 chunks) and remain marked `"clean"`, avoiding over-filtering while isolating major defects.
+2. **Empirical Glyph Repair for Corrupted Numerals (429 Characters Healed)**:
+   - In `tcs-ar-26.pdf`, corrupted font encodings caused digits to map to Coptic/Greek characters (`\u03EC-\u03F5`), commas to combining mark `\u0355`, periods to `\u0358`, and the rupee sign to `\u0F24`.
+   - Our `glyph_repair.py` lookup table repairs these characters upfront: `"26ϳ,021"` becomes `"267,021"`, `"₹Ϯ͕ ϲϳ͕ ϬϮ1"` becomes `"₹2,67,021"`, and `"Equity ༤ϭϬϳ͕ϮϰϬ"` becomes `"Equity ₹1,07,240"`.
+   - In accordance with safety rules, **zero letter guessing is performed** (letters like `\u010F` for `b` are excluded from repair).
 
-3. **Visual OCR Deferred**:
-   - Visual OCR (e.g. Tesseract) to reconstruct headline figures from the 17 degraded pages is deferred to a future phase to maintain a lean, high-throughput native extraction pipeline for the 97.7% clean corpus.
+3. **Gated Token Filtering & Allowlisting**:
+   - For remaining corrupted glyphs, tokens in `\u0100` to `\u052F` are dropped on degraded pages (`odd_char_count >= 1`), marking 30 TCS pages as `"degraded"` and logging details to `data/processed/degraded_pages.csv`.
+   - **Zero corrupted chunks remain in TCS**: All 1,425 TCS chunks are 100% free of corrupted Unicode characters.
+   - **Allowlisting**: Legitimate brand name `"Mondelēz"` (`ē` is `\u0113`) on Infosys page 5 is preserved via `settings.yaml` under `quality.keep_tokens`.
+
+4. **Visual OCR Deferred**:
+   - Visual OCR (e.g. Tesseract) to reconstruct words from the 30 degraded pages is deferred to a future phase to maintain a lean, high-throughput native extraction pipeline for the 95.8% clean corpus.

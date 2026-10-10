@@ -1,40 +1,48 @@
-provider:
-  name: "gemini"
-  embedding_model: "gemini-embedding-001"
-  generation_model: "gemini-3.5-flash-lite"
-  embedding_dimension: 768    # Vector dimension for embeddings (e.g. 768 for gemini-embedding-001 / text-embedding-004)
-  batch_size: 20              # Batch size for embedding calls; reduced to 20 to avoid free-tier payload spikes
-  max_items_per_minute: 80    # Maximum items to embed per minute to stay safely within free-tier limits (~100 req/min)
+# Embedding model and pipeline settings
+embedding:
+  provider: "local"             # Embedding provider: "local" (FastEmbed ONNX) or "gemini"
+  model: "BAAI/bge-base-en-v1.5" # Embedding model name (768 dimensions)
+  dimension: 768                # Vector dimension for embeddings
+  batch_size: 20                # Batch size for embedding calls
+  # Gemini-specific rate-limit and retry settings (used when provider is "gemini"):
+  max_items_per_minute: 80      # Maximum items to embed per minute (~100 req/min free-tier cap)
   retry:
-    max_retries: 3            # Maximum retry attempts on 5xx temporary server errors
-    max_rate_limit_retries: 5 # Maximum retry attempts on 429 rate limit errors (with backoff wait)
-    initial_wait_seconds: 1.0 # Initial backoff delay in seconds
-    max_wait_seconds: 60.0    # Maximum backoff delay cap in seconds
+    max_retries: 3              # Maximum retry attempts on 5xx temporary server errors
+    max_rate_limit_retries: 5   # Maximum retry attempts on 429 rate limit errors (with backoff wait)
+    initial_wait_seconds: 1.0   # Initial backoff delay in seconds
+    max_wait_seconds: 60.0      # Maximum backoff delay cap in seconds
 
+# Generation model settings
+generation:
+  provider: "gemini"            # Generation provider: "gemini" (or "fake" in offline tests)
+  model: "gemini-3.5-flash-lite"# Gemini generation model
+
+# PDF chunking and ingestion parameters
 ingestion:
-  chunk_size: 1000            # Target chunk length in characters
-  chunk_overlap: 200          # Overlap length in characters between adjacent chunks
-  min_page_chars: 50          # Minimum characters required; pages below this are skipped
+  chunk_size: 1000              # Target chunk length in characters
+  chunk_overlap: 200            # Overlap length in characters between adjacent chunks
+  min_page_chars: 50            # Minimum characters required; pages below this are skipped
 
+# Retrieval parameters
 retrieval:
-  top_k: 5                    # Number of top relevant chunks to retrieve
+  top_k: 5                      # Number of top relevant chunks to retrieve
 
+# Storage paths and collection settings
 storage:
   vector_store_path: "chroma_db"    # Filesystem path for persistent ChromaDB storage
   collection_name: "annual_reports" # ChromaDB collection name
   raw_data_dir: "data/raw"          # Directory containing input annual report PDFs
   eval_data_dir: "data/eval"        # Directory containing evaluation datasets
 
+# Text quality audit and glyph filtering settings
 quality:
   single_letter_ratio_threshold: 0.15 # Flag pages where single-letter tokens exceed 15% (spaced-out words)
   odd_char_ratio_threshold: 0.002     # Flag pages where unusual characters exceed 0.2% (broken font encodings)
-  odd_char_count_threshold: 15        # Flag pages with 15 or more unusual characters (absolute count)
+  odd_char_count_threshold: 1         # Flag pages with 1 or more unusual characters (absolute count)
   number_split_threshold: 3           # Flag pages with 3 or more split number sequences (e.g. "2 0 2 6")
   corrupted_glyph_range_start: "\u0100" # Start of unicode range for corrupted font glyphs (Latin Ext, Greek, Cyrillic)
   corrupted_glyph_range_end: "\u052F"   # End of unicode range for corrupted font glyphs
   # Legitimate names/words containing characters in the corrupted Unicode range
   # that must never be dropped by the token filter, even on degraded pages.
-  # Defaults to empty ([]) when commented or not specified.
   keep_tokens:
     - "Mondelēz"
-

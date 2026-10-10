@@ -2,13 +2,15 @@
 
 import argparse
 import math
+import sys
 from pathlib import Path
 
 from annual_report_rag.config import Settings, load_settings
 from annual_report_rag.ingestion.chunker import chunk_pages
 from annual_report_rag.ingestion.indexer import index_pdfs
 from annual_report_rag.ingestion.loader import get_pdf_page_count, load_pdf
-from annual_report_rag.providers.factory import get_provider
+from annual_report_rag.providers.factory import get_embedder
+from annual_report_rag.providers.gemini import DailyQuotaExceeded
 from annual_report_rag.retrieval.store import ChromaStore
 
 
@@ -49,14 +51,19 @@ def execute_dry_run(
 ) -> None:
     """Executes parsing and chunking in dry-run mode without calling embedding APIs."""
     print("\n--- Running Ingestion Dry-Run ---")
-    batch_size = settings.provider.batch_size
-    rate = settings.provider.max_items_per_minute
+    batch_size = settings.embedding.batch_size
+    rate = settings.embedding.max_items_per_minute
+    provider_name = settings.embedding.provider
     total_chunks = 0
     total_pages_read = 0
     total_pages_skipped = 0
     total_default_pages = 0
     total_inhibit_pages = 0
+    total_clean_pages = 0
+    total_repaired_pages = 0
     total_degraded_pages = 0
+    total_repaired_chars = 0
+    total_dropped_tokens = 0
     all_chunks = []
 
     for path in pdf_paths:
@@ -86,27 +93,54 @@ def execute_dry_run(
 
         n_default = sum(1 for p in pages if p.extraction_method == "default")
         n_inhibit = sum(1 for p in pages if p.extraction_method == "inhibit_spaces")
+        n_clean = sum(1 for p in pages if p.text_quality == "clean")
+        n_repaired = sum(1 for p in pages if p.text_quality == "repaired")
         n_degraded = sum(1 for p in pages if p.text_quality == "degraded")
+        repaired_chars = sum(p.repaired_chars for p in pages)
+        dropped_tokens = sum(p.dropped_tokens for p in pages)
+
+        # PDF chunks with U+0100-U+052F
+        r_start = settings.quality.corrupted_glyph_range_start
+        r_end = settings.quality.corrupted_glyph_range_end
+        pdf_chunks_with_range: list[tuple[int, list[str]]] = []
+        for c in chunks:
+            chs = sorted({ch for ch in c.text if r_start <= ch <= r_end})
+            if chs:
+                pdf_chunks_with_range.append((c.page, chs))
 
         print(f"\nPDF: {path.name}")
         print(f"  Pages examined:        {examined}")
         print(f"  Pages loaded:          {len(pages)}")
         print(f"  Pages skipped:         {skipped}")
         print(f"  Extraction methods:    default: {n_default}, inhibit_spaces: {n_inhibit}")
-        print(f"  Degraded pages:        {n_degraded}")
+        print(f"  Text quality pages:    clean: {n_clean}, repaired: {n_repaired}, degraded: {n_degraded}")
+        print(f"  Repaired characters:   {repaired_chars}")
+        print(f"  Dropped tokens:        {dropped_tokens}")
         print(f"  Chunks generated:      {len(chunks)}")
-        print(
-            f"  Est. embedding calls:  {api_calls} (batch size {batch_size})"
-        )
+        print(f"  Chunks with U+0100-U+052F: {len(pdf_chunks_with_range)}")
+        if pdf_chunks_with_range:
+            page_map: dict[int, set[str]] = {}
+            for pg, chs in pdf_chunks_with_range:
+                page_map.setdefault(pg, set()).update(chs)
+            for pg, chs in sorted(page_map.items()):
+                formatted = ", ".join(f"{c!a} (U+{ord(c):04X})" for c in sorted(chs))
+                print(f"    - Page {pg}: {formatted}")
+
+        if provider_name == "gemini":
+            print(f"  Est. embedding calls:  {api_calls} (batch size {batch_size})")
 
         total_pages_read += len(pages)
         total_pages_skipped += skipped
         total_default_pages += n_default
         total_inhibit_pages += n_inhibit
+        total_clean_pages += n_clean
+        total_repaired_pages += n_repaired
         total_degraded_pages += n_degraded
+        total_repaired_chars += repaired_chars
+        total_dropped_tokens += dropped_tokens
         total_chunks += len(chunks)
 
-    # Inspect chunks containing characters in U+0100-U+052F
+    # Inspect all chunks containing characters in U+0100-U+052F
     r_start = settings.quality.corrupted_glyph_range_start
     r_end = settings.quality.corrupted_glyph_range_end
     chunks_with_range_chars: list[tuple[str, int, list[str]]] = []
@@ -115,17 +149,14 @@ def execute_dry_run(
         if chars:
             chunks_with_range_chars.append((c.source, c.page, chars))
 
-    total_api_calls = (
-        math.ceil(total_chunks / batch_size) if total_chunks > 0 else 0
-    )
-    est_minutes = total_chunks / rate if rate > 0 else 0.0
-
     print("\n--- Dry-Run Summary ---")
     print(f"Total PDFs:               {len(pdf_paths)}")
     print(f"Total pages read:         {total_pages_read}")
     print(f"Total pages skipped:      {total_pages_skipped}")
     print(f"Extraction methods:       default: {total_default_pages}, inhibit_spaces: {total_inhibit_pages}")
-    print(f"Total degraded pages:     {total_degraded_pages}")
+    print(f"Text quality pages:       clean: {total_clean_pages}, repaired: {total_repaired_pages}, degraded: {total_degraded_pages}")
+    print(f"Total repaired characters:{total_repaired_chars}")
+    print(f"Total dropped tokens:     {total_dropped_tokens}")
     print(f"Total chunks created:     {total_chunks}")
     print(f"Chunks with U+0100-U+052F:{len(chunks_with_range_chars)}")
     if chunks_with_range_chars:
@@ -137,12 +168,16 @@ def execute_dry_run(
                 f"{c!a} (U+{ord(c):04X})" for c in sorted(chs)
             )
             print(f"  - {src} page {pg}: {formatted_chars}")
-    print(
-        f"Total est. API calls:     {total_api_calls} (batch size {batch_size})"
-    )
-    print(
-        f"Est. embedding time:      ~{est_minutes:.1f} min (at {rate} items/min limit)"
-    )
+
+    if provider_name == "gemini":
+        total_api_calls = (
+            math.ceil(total_chunks / batch_size) if total_chunks > 0 else 0
+        )
+        est_minutes = total_chunks / rate if rate > 0 else 0.0
+        print(f"Total est. API calls:     {total_api_calls} (batch size {batch_size})")
+        print(f"Est. embedding time:      ~{est_minutes:.1f} min (at {rate} items/min limit)")
+    else:
+        print(f"Embedding provider:       local ({settings.embedding.model}) via FastEmbed ONNX (offline)")
 
 
 def main() -> None:
@@ -163,19 +198,39 @@ def main() -> None:
     store = ChromaStore(
         persist_path=settings.storage.vector_store_path,
         collection_name=settings.storage.collection_name,
-        embedding_model=settings.provider.embedding_model,
-        embedding_dimension=settings.provider.embedding_dimension,
+        embedding_provider=settings.embedding.provider,
+        embedding_model=settings.embedding.model,
+        embedding_dimension=settings.embedding.dimension,
         reset_existing=args.reset,
     )
 
     if args.reset:
         print(f"Collection '{settings.storage.collection_name}' reset successfully.")
 
-    provider = get_provider(settings)
-    print(f"Indexing {len(pdf_paths)} document(s)...")
-    summary = index_pdfs(
-        pdf_paths, provider, store, settings, limit_pages=args.limit_pages
+    embedder = get_embedder(settings)
+    print(
+        f"Indexing {len(pdf_paths)} document(s) with "
+        f"provider '{settings.embedding.provider}' (model: {settings.embedding.model})..."
     )
+
+    try:
+        summary = index_pdfs(
+            pdf_paths, embedder, store, settings, limit_pages=args.limit_pages
+        )
+    except DailyQuotaExceeded as exc:
+        stored = exc.chunks_stored if exc.chunks_stored is not None else store.count()
+        remaining = exc.chunks_remaining if exc.chunks_remaining is not None else "unknown"
+        if exc.retry_delay and exc.retry_delay > 0:
+            hours = exc.retry_delay / 3600.0
+            resume_msg = f"in roughly {hours:.1f} hours ({exc.retry_delay:.0f}s)"
+        else:
+            resume_msg = "tomorrow when your daily quota resets"
+        print(f"\n[Daily Quota Exceeded] {exc}")
+        print(f"Chunks stored so far: {stored}")
+        print(f"Chunks remaining:     {remaining}")
+        print(f"Estimated resume:     {resume_msg}")
+        print("To resume ingestion, re-run without the --reset flag.")
+        sys.exit(2)
 
     print("\n--- Indexing Summary ---")
     print(f"Pages read:       {summary.pages_read}")

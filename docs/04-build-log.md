@@ -258,3 +258,56 @@ Key outcomes:
 
 ### What could go wrong
 * **Minor Residual Font Defects Below Threshold**: The 14 TCS pages with 1–13 odd characters contain isolated corrupted tokens (e.g. `pƌoĐuƌeŵent` on page 9, `COφ` on page 135). Because their page-level anomaly score is below 15, they remain in chunks rather than being dropped. This prevents over-filtering but leaves minor typographical artifacts in those 14 pages until OCR is added.
+
+---
+
+## Phase 2f: Quota-Proof Embeddings, Resilient Ingestion, and Corrupted Digit Repair
+
+### The problem this phase solves
+During our trial run to ingest both annual reports (3,109 chunks total) using Gemini embeddings, two blockers occurred:
+1. **Daily Quota Ceiling (Crash at ~800 chunks)**: After embedding ~800 chunks, Google Gemini returned HTTP 429 `RESOURCE_EXHAUSTED` with `quotaId: EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier` (limit: 1,000 requests/day, retry delay: ~21 hours / 75,600s). The retry loop in `gemini.py` treated this like a per-minute rate limit, waited 22s five times in vain, and crashed with an unhandled traceback. Additionally, `scripts/ingest.py --reset` crashed with `NotFoundError` when resetting a database before any collection had been created.
+2. **Corrupted Numbers in Financial Highlights**: In `tcs-ar-26.pdf`, 17 pages had numbers extracted as Coptic and Greek characters (`\u03EC-\u03F5` instead of `0-9`, combining marks `\u0355` instead of commas, and `\u0F24` instead of `₹`). For example, page 8 had `"26ϳ,021"`, page 36 had `"₹Ϯ͕ ϲϳ͕ ϬϮ1"` and `"&z ϮϬϮϲ"`, and page 23 had `"Equity ༤ϭϬϳ͕ϮϰϬ ĐƌŽƌe"`. Dropping these tokens destroyed crucial financial facts.
+
+### What we built
+1. **Separated Provider Architecture**: Split `BaseProvider` into `EmbeddingProvider` (`embed(texts, purpose="document")`) and `GenerationProvider` (`generate(prompt)`). Restructured `settings.yaml` and `config.py` into separate `embedding` and `generation` sections with dedicated factory functions `get_embedder(settings)` and `get_generator(settings)`.
+2. **Local FastEmbed Integration (`providers/local_embedder.py`)**: Added `fastembed` (ONNX runtime, zero PyTorch/CUDA overhead) using `BAAI/bge-base-en-v1.5` (768 dimensions) as the default embedding provider. Maps `purpose="query"` to `query_embed()` and `purpose="document"` to `passage_embed()`, applies L2 normalization, and verifies vector count and dimension. Ingestion now runs completely offline without API keys or rate limits.
+3. **Resilient Quota Detection (`providers/gemini.py`)**: Added `DailyQuotaExceeded`. Detects errors where `quotaId` contains `"PerDay"` or suggested retry delay $> 300\text{s}$, raising immediately with 0 retries. In `scripts/ingest.py`, catches `DailyQuotaExceeded`, reports chunks stored so far, chunks remaining, and estimated resume time, and exits cleanly with exit code 2 and no traceback.
+4. **Missing Collection Reset Fix (`retrieval/store.py`)**: Fixed `store.reset()` to catch `(NotFoundError, ValueError)` when resetting a fresh ChromaDB instance where the collection does not yet exist.
+5. **Empirical Glyph Repair (`ingestion/glyph_repair.py`)**:
+   - Ran a diagnostic of the top 25 characters in `\u0100-U+0FFF` on `tcs-ar-26.pdf`.
+   - Confirmed 1:1 digit mappings for `\u03EC-\u03F5` to `0-9`, `\u0355` (combining comma) to `,`, `\u0358` (combining period) to `.`, and `\u0F24` (Tibetan digit 4) to `₹`.
+   - Applied glyph repair *before* token filtering, and normalized Indian rupee groupings (`₹107,240` -> `₹1,07,240`).
+   - Confirmed no guessing on letters (e.g. `\u010F` for `b` was NOT mapped).
+6. **Lowered Anomaly Threshold & 3-State Quality Tagging**:
+   - Lowered `odd_char_count_threshold` from 15 to 1.
+   - Introduced `text_quality` labels: `"clean"` (0 repairs, 0 dropped), `"repaired"` ($\ge 1$ repaired, 0 dropped), `"degraded"` ($\ge 1$ dropped).
+   - Ensured client brand `"Mondelēz"` survives untouched.
+
+### Real-World Numbers from Ingestion Dry-Run
+Running `scripts/ingest.py --dry-run` across both annual reports:
+
+```
+--- Dry-Run Summary ---
+Total PDFs:               2
+Total pages read:         741 (2 empty pages skipped in Infosys)
+Total pages skipped:      2
+Extraction methods:       default: 706, inhibit_spaces: 35
+Text quality pages:       clean: 710, repaired: 1, degraded: 30
+Total repaired characters:429
+Total dropped tokens:     227
+Total chunks created:     3109
+Chunks with U+0100-U+052F:3
+  - infosys-ar-26 page 5: '\u0113' (U+0113)
+Embedding provider:       local (BAAI/bge-base-en-v1.5) via FastEmbed ONNX (offline)
+```
+
+Per PDF Breakdown:
+- **`infosys-ar-26.pdf`**: 381 pages loaded, 381 clean, 0 repaired, 0 degraded, 0 repaired chars, 0 dropped tokens, 1,684 chunks. Only 3 chunks contain `\u0113` (all representing `"Mondelēz"` on page 5).
+- **`tcs-ar-26.pdf`**: 360 pages loaded, 329 clean, 1 repaired, 30 degraded, **429 characters repaired**, 227 dropped tokens, 1,425 chunks. **Zero chunks contain corrupted glyphs in `\u0100-U+052F`**.
+
+Side-by-side verification on TCS Pages 8 and 36:
+- Page 8 Sentence 1: `"26ϳ,021 Đƌoƌe"` -> `"267,021 Đƌoƌe"` (1 glyph repaired).
+- Page 8 Sentence 2: `"₹ 66,ϴ3ϴ Đƌoƌe"`, `"25͘0й͘"`, `"₹ 52,ϴ20 crore"` -> `"₹ 66,838 Đƌoƌe"`, `"25.0й."`, `"₹ 52,820 crore"` (5 glyphs repaired).
+- Page 36 Sentence 1: `"&z ϮϬϮϲ ǁas ₹Ϯ͕ ϲϳ͕ ϬϮ1 Đrore"`, `"₹Ϯ͕ ϱϱ͕ 3Ϯϰ Đrore"` -> `"&z 2026 ǁas ₹2,67,021 Đrore"`, `"₹2,55,324 Đrore"` (21 glyphs repaired).
+- Page 36 Sentence 2: `"₹ϱϮ͕ ϴϮϬ Đrore"`, `"₹ϰϴ͕ ϱϱ3 Đrore in &z ϮϬϮϱ"` -> `"₹52,820 Đrore"`, `"₹48,553 Đrore in &z 2025"` (20 glyphs repaired).
+

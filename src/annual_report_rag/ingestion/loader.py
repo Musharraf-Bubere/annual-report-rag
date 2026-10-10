@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pymupdf
 
+from annual_report_rag.ingestion.glyph_repair import repair_glyphs
 from annual_report_rag.ingestion.quality import assess_page_quality
 
 
@@ -20,6 +21,8 @@ class LoadedPage:
     text: str
     extraction_method: str = "default"
     text_quality: str = "clean"
+    repaired_chars: int = 0
+    dropped_tokens: int = 0
 
 
 def clean_text(text: str) -> str:
@@ -128,14 +131,23 @@ def write_degraded_log(output_path: Path, records: list[dict[str, object]]) -> N
                 existing_keys.add((str(row["pdf_name"]), str(row["page"])))
 
     new_records = [
-        r for r in records if (str(r["pdf_name"]), str(r["page"])) not in existing_keys
+        r
+        for r in records
+        if (str(r["pdf_name"]), str(r["page"])) not in existing_keys
+        and int(r.get("dropped_tokens", 0)) > 0
     ]
     if not new_records and output_path.exists():
         return
 
-    fieldnames = ["pdf_name", "page", "odd_char_count", "dropped_tokens", "remaining_chars"]
+    fieldnames = [
+        "pdf_name",
+        "page",
+        "odd_char_count",
+        "dropped_tokens",
+        "remaining_chars",
+    ]
     with output_path.open("a", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         if not output_path.exists() or len(existing_keys) == 0:
             writer.writeheader()
         writer.writerows(new_records)
@@ -161,30 +173,50 @@ def assess_and_filter_page(
     page_num: int,
     cleaned: str,
     raw: str,
-    odd_count_threshold: int = 15,
+    odd_count_threshold: int = 1,
     glyph_range_start: str = "\u0100",
     glyph_range_end: str = "\u052F",
     keep_tokens: tuple[str, ...] | set[str] = (),
 ) -> tuple[str, str, dict[str, object] | None]:
-    """Filters corrupted tokens on pages meeting odd_char_count threshold, logging defects."""
-    metrics = assess_page_quality(source, page_num, cleaned, raw_text=raw)
+    """Repairs corrupted glyphs, assesses quality, and filters tokens if degraded."""
+    repaired_text, repaired_count = repair_glyphs(cleaned)
+    metrics = assess_page_quality(source, page_num, repaired_text, raw_text=raw)
+
     if metrics.odd_char_count < odd_count_threshold:
-        return cleaned, "clean", None
+        if repaired_count > 0:
+            rec = {
+                "pdf_name": source,
+                "page": page_num,
+                "repaired_chars": repaired_count,
+                "dropped_tokens": 0,
+            }
+            return repaired_text, "repaired", rec
+        return repaired_text, "clean", None
 
     filtered, dropped = filter_corrupted_tokens(
-        cleaned, glyph_range_start, glyph_range_end, keep_tokens=keep_tokens
+        repaired_text, glyph_range_start, glyph_range_end, keep_tokens=keep_tokens
     )
-    if dropped == 0:
-        return cleaned, "clean", None
+    if dropped > 0:
+        rec = {
+            "pdf_name": source,
+            "page": page_num,
+            "odd_char_count": metrics.odd_char_count,
+            "dropped_tokens": dropped,
+            "repaired_chars": repaired_count,
+            "remaining_chars": len(filtered),
+        }
+        return filtered, "degraded", rec
 
-    record: dict[str, object] = {
-        "pdf_name": source,
-        "page": page_num,
-        "odd_char_count": metrics.odd_char_count,
-        "dropped_tokens": dropped,
-        "remaining_chars": len(filtered),
-    }
-    return filtered, "degraded", record
+    if repaired_count > 0:
+        rec = {
+            "pdf_name": source,
+            "page": page_num,
+            "repaired_chars": repaired_count,
+            "dropped_tokens": 0,
+        }
+        return filtered, "repaired", rec
+
+    return filtered, "clean", None
 
 
 def load_pdf(
@@ -193,13 +225,13 @@ def load_pdf(
     limit_pages: int | None = None,
     single_threshold: float = 0.15,
     number_split_threshold: int = 3,
-    odd_count_threshold: int = 15,
+    odd_count_threshold: int = 1,
     glyph_range_start: str = "\u0100",
     glyph_range_end: str = "\u052F",
     keep_tokens: tuple[str, ...] | set[str] = (),
     degraded_log_path: Path | str | None = "data/processed/degraded_pages.csv",
 ) -> list[LoadedPage]:
-    """Extracts text using best-of extraction, filters corrupted glyph tokens, and logs defects."""
+    """Extracts text using best-of extraction, repairs glyphs, and filters corrupted tokens."""
     path = Path(pdf_path)
     source = path.stem
     doc = pymupdf.open(path)
@@ -229,7 +261,10 @@ def load_pdf(
             glyph_range_end=glyph_range_end,
             keep_tokens=keep_tokens,
         )
-        if record:
+        repaired_chars = int(record.get("repaired_chars", 0)) if record else 0
+        dropped_tokens = int(record.get("dropped_tokens", 0)) if record else 0
+
+        if record and dropped_tokens > 0:
             degraded_records.append(record)
 
         loaded_pages.append(
@@ -239,6 +274,8 @@ def load_pdf(
                 text=cleaned,
                 extraction_method=method,
                 text_quality=quality,
+                repaired_chars=repaired_chars,
+                dropped_tokens=dropped_tokens,
             )
         )
         total_chars += len(cleaned)

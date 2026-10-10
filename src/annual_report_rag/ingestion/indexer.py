@@ -7,7 +7,8 @@ from pathlib import Path
 from annual_report_rag.config import Settings
 from annual_report_rag.ingestion.chunker import Chunk, chunk_pages
 from annual_report_rag.ingestion.loader import get_pdf_page_count, load_pdf
-from annual_report_rag.providers.base import BaseProvider
+from annual_report_rag.providers.base import EmbeddingProvider
+from annual_report_rag.providers.gemini import DailyQuotaExceeded
 from annual_report_rag.retrieval.store import ChromaStore
 
 
@@ -24,7 +25,7 @@ class IndexingSummary:
 
 
 def embed_and_store_batches(
-    provider: BaseProvider,
+    provider: EmbeddingProvider,
     store: ChromaStore,
     chunks: list[Chunk],
     batch_size: int,
@@ -35,7 +36,12 @@ def embed_and_store_batches(
     for i in range(0, total, batch_size):
         batch = chunks[i : i + batch_size]
         texts = [c.text for c in batch]
-        vectors = provider.embed(texts, purpose="document")
+        try:
+            vectors = provider.embed(texts, purpose="document")
+        except DailyQuotaExceeded as exc:
+            exc.chunks_stored = store.count()
+            exc.chunks_remaining = total - processed
+            raise
         store.add_chunks(batch, vectors)
         processed += len(batch)
         print(f"Embedded {processed}/{total} chunks")
@@ -43,7 +49,7 @@ def embed_and_store_batches(
 
 def index_pdfs(
     pdf_paths: list[Path | str],
-    provider: BaseProvider,
+    provider: EmbeddingProvider,
     store: ChromaStore,
     settings: Settings,
     limit_pages: int | None = None,
@@ -85,7 +91,7 @@ def index_pdfs(
     if new_chunks:
         print(f"Found {len(new_chunks)} new chunk(s) to embed out of {len(all_chunks)} total.")
         embed_and_store_batches(
-            provider, store, new_chunks, settings.provider.batch_size
+            provider, store, new_chunks, settings.embedding.batch_size
         )
     else:
         print("All chunks already exist in vector store. Nothing new to embed.")

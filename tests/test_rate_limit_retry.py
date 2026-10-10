@@ -1,10 +1,12 @@
-"""Unit tests for 429 rate limit error parsing and retry backoff behavior."""
+"""Unit tests for 429 rate limit error parsing, retry backoff behavior, and daily quota detection."""
 
 import pytest
 
 from annual_report_rag.providers.gemini import (
+    DailyQuotaExceeded,
     GeminiProvider,
     extract_retry_delay,
+    is_daily_quota_error,
 )
 from annual_report_rag.providers.rate_limiter import SlidingWindowRateLimiter
 
@@ -21,8 +23,57 @@ def test_extract_retry_delay() -> None:
     assert extract_retry_delay(exc3, default_delay=30.0) == 30.0
 
 
+def test_is_daily_quota_error_detection() -> None:
+    """Verifies that daily quota errors are correctly identified via PerDay or large delay."""
+    exc_per_day = RuntimeError(
+        "RESOURCE_EXHAUSTED: quotaId EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier limit 1000"
+    )
+    assert is_daily_quota_error(exc_per_day) is True
+
+    exc_long_delay = RuntimeError(
+        "RESOURCE_EXHAUSTED: Rate limit exceeded. Please retry in 75600s"
+    )
+    assert is_daily_quota_error(exc_long_delay) is True
+
+    exc_minute_limit = RuntimeError(
+        "RESOURCE_EXHAUSTED: Rate limit exceeded. Please retry in 22s"
+    )
+    assert is_daily_quota_error(exc_minute_limit) is False
+
+
+def test_daily_quota_raises_immediately_without_retries() -> None:
+    """Verifies that daily quota error raises DailyQuotaExceeded immediately with 0 retries."""
+    slept_durations: list[float] = []
+
+    provider = GeminiProvider(
+        api_key="test_api_key",
+        embedding_model="gemini-embedding-001",
+        generation_model="gemini-3.5-flash-lite",
+        max_rate_limit_retries=5,
+        sleep_fn=slept_durations.append,
+    )
+
+    daily_error = RuntimeError(
+        "429 RESOURCE_EXHAUSTED: quotaId EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier. Please retry in 75600s"
+    )
+
+    call_count = 0
+
+    def fail_with_daily() -> None:
+        nonlocal call_count
+        call_count += 1
+        raise daily_error
+
+    with pytest.raises(DailyQuotaExceeded) as exc_info:
+        provider._execute_with_retry(fail_with_daily)
+
+    assert call_count == 1
+    assert len(slept_durations) == 0  # No sleeping or retrying for daily limits
+    assert exc_info.value.retry_delay == 75600.0
+
+
 def test_retry_on_429_with_suggested_delay() -> None:
-    """Verifies that 429 errors sleep for suggested delay plus one second and retry successfully."""
+    """Verifies that transient minute 429 errors sleep for suggested delay plus one second and retry."""
     slept_durations: list[float] = []
 
     def mock_sleep(seconds: float) -> None:
@@ -33,7 +84,7 @@ def test_retry_on_429_with_suggested_delay() -> None:
     )
     provider = GeminiProvider(
         api_key="test_api_key",
-        embedding_model="gemini-embedding-2",
+        embedding_model="gemini-embedding-001",
         generation_model="gemini-3.5-flash-lite",
         max_rate_limit_retries=3,
         rate_limiter=limiter,
@@ -60,12 +111,12 @@ def test_retry_on_429_with_suggested_delay() -> None:
 
 
 def test_retry_exceeds_max_attempts_raises() -> None:
-    """Verifies that repeated 429 errors eventually raise after exhausting max retries."""
+    """Verifies that repeated minute 429 errors eventually raise after exhausting max retries."""
     slept_durations: list[float] = []
 
     provider = GeminiProvider(
         api_key="test_api_key",
-        embedding_model="gemini-embedding-2",
+        embedding_model="gemini-embedding-001",
         generation_model="gemini-3.5-flash-lite",
         max_rate_limit_retries=2,
         sleep_fn=slept_durations.append,

@@ -5,8 +5,9 @@ from pathlib import Path
 import pymupdf
 
 from annual_report_rag.config import (
+    EmbeddingConfig,
+    GenerationConfig,
     IngestionConfig,
-    ProviderConfig,
     QualityConfig,
     RetrievalConfig,
     RetryConfig,
@@ -21,11 +22,10 @@ from annual_report_rag.retrieval.store import ChromaStore
 def _build_test_settings(db_dir: Path) -> Settings:
     """Creates temporary Settings pointing to isolated test directories."""
     return Settings(
-        provider=ProviderConfig(
-            name="fake",
-            embedding_model="fake-embed",
-            generation_model="fake-gen",
-            embedding_dimension=32,
+        embedding=EmbeddingConfig(
+            provider="fake",
+            model="fake-embed",
+            dimension=32,
             batch_size=10,
             max_items_per_minute=60,
             retry=RetryConfig(
@@ -34,6 +34,10 @@ def _build_test_settings(db_dir: Path) -> Settings:
                 initial_wait_seconds=0.1,
                 max_wait_seconds=0.5,
             ),
+        ),
+        generation=GenerationConfig(
+            provider="fake",
+            model="fake-gen",
         ),
         ingestion=IngestionConfig(
             chunk_size=100, chunk_overlap=20, min_page_chars=10
@@ -48,6 +52,7 @@ def _build_test_settings(db_dir: Path) -> Settings:
         quality=QualityConfig(
             single_letter_ratio_threshold=0.15,
             odd_char_ratio_threshold=0.05,
+            odd_char_count_threshold=1,
         ),
     )
 
@@ -67,7 +72,11 @@ def test_indexer_idempotence(tmp_path: Path) -> None:
     settings = _build_test_settings(db_path)
     provider = FakeProvider(embedding_dim=32)
     store = ChromaStore(
-        persist_path=str(db_path), collection_name="test_idempotence"
+        persist_path=str(db_path),
+        collection_name="test_idempotence",
+        embedding_provider="fake",
+        embedding_model="fake-embed",
+        embedding_dimension=32,
     )
 
     # First run: should index all chunks

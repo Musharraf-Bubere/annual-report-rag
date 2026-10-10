@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from annual_report_rag.ingestion.chunker import Chunk
 from annual_report_rag.retrieval.store import ChromaStore
 
@@ -77,12 +79,32 @@ def test_chroma_store_reset(tmp_path: Path) -> None:
     assert store.count() == 0
 
 
+def test_chroma_store_reset_on_missing_collection(tmp_path: Path) -> None:
+    """Verifies that resetting a collection that does not exist yet succeeds cleanly."""
+    db_path = str(tmp_path / "missing_reset_db")
+    # Initializing with reset_existing=True when no collection exists yet
+    store = ChromaStore(
+        persist_path=db_path,
+        collection_name="new_never_existed_col",
+        embedding_provider="local",
+        embedding_model="BAAI/bge-base-en-v1.5",
+        embedding_dimension=768,
+        reset_existing=True,
+    )
+    assert store.count() == 0
+
+    # Calling reset() again on empty collection
+    store.reset()
+    assert store.count() == 0
+
+
 def test_chroma_store_metadata_matching(tmp_path: Path) -> None:
     """Verifies that opening an existing collection with matching metadata succeeds."""
     db_path = str(tmp_path / "meta_db")
     ChromaStore(
         persist_path=db_path,
         collection_name="meta_col",
+        embedding_provider="local",
         embedding_model="model-v1",
         embedding_dimension=768,
     )
@@ -91,29 +113,41 @@ def test_chroma_store_metadata_matching(tmp_path: Path) -> None:
     reopened = ChromaStore(
         persist_path=db_path,
         collection_name="meta_col",
+        embedding_provider="local",
         embedding_model="model-v1",
         embedding_dimension=768,
     )
+    assert reopened.collection.metadata.get("embedding_provider") == "local"
     assert reopened.collection.metadata.get("embedding_model") == "model-v1"
 
 
 def test_chroma_store_metadata_mismatch_raises(tmp_path: Path) -> None:
     """Verifies that opening an existing collection with mismatched settings raises ValueError."""
-    import pytest
-
     db_path = str(tmp_path / "mismatch_db")
     ChromaStore(
         persist_path=db_path,
         collection_name="mismatch_col",
+        embedding_provider="local",
         embedding_model="model-v1",
         embedding_dimension=768,
     )
+
+    # Mismatched provider
+    with pytest.raises(ValueError, match="Please re-index using --reset"):
+        ChromaStore(
+            persist_path=db_path,
+            collection_name="mismatch_col",
+            embedding_provider="gemini",
+            embedding_model="model-v1",
+            embedding_dimension=768,
+        )
 
     # Mismatched model name
     with pytest.raises(ValueError, match="Please re-index using --reset"):
         ChromaStore(
             persist_path=db_path,
             collection_name="mismatch_col",
+            embedding_provider="local",
             embedding_model="model-v2",
             embedding_dimension=768,
         )
@@ -123,6 +157,7 @@ def test_chroma_store_metadata_mismatch_raises(tmp_path: Path) -> None:
         ChromaStore(
             persist_path=db_path,
             collection_name="mismatch_col",
+            embedding_provider="local",
             embedding_model="model-v1",
             embedding_dimension=1536,
         )
@@ -134,18 +169,20 @@ def test_chroma_store_reset_overrides_mismatch(tmp_path: Path) -> None:
     ChromaStore(
         persist_path=db_path,
         collection_name="override_col",
+        embedding_provider="gemini",
         embedding_model="model-v1",
         embedding_dimension=768,
     )
 
-    # Resetting with new model configuration
+    # Resetting with new provider and model configuration
     recreated = ChromaStore(
         persist_path=db_path,
         collection_name="override_col",
+        embedding_provider="local",
         embedding_model="model-v2",
         embedding_dimension=512,
         reset_existing=True,
     )
+    assert recreated.collection.metadata.get("embedding_provider") == "local"
     assert recreated.collection.metadata.get("embedding_model") == "model-v2"
     assert recreated.collection.metadata.get("embedding_dimension") == 512
-

@@ -3,8 +3,8 @@
 from abc import ABC, abstractmethod
 
 
-class BaseProvider(ABC):
-    """Defines a unified contract for embedding and generation model providers."""
+class EmbeddingProvider(ABC):
+    """Abstract interface for text embedding providers."""
 
     @abstractmethod
     def embed(
@@ -14,6 +14,14 @@ class BaseProvider(ABC):
     ) -> list[list[float]]:
         """Converts a batch of texts into high-dimensional vector embeddings."""
 
+
+class GenerationProvider(ABC):
+    """Abstract interface for text generation providers."""
+
     @abstractmethod
     def generate(self, prompt: str) -> str:
         """Generates a text completion for a given user prompt."""
+
+
+class BaseProvider(EmbeddingProvider, GenerationProvider, ABC):
+    """Unified composite interface supporting both embedding and generation."""

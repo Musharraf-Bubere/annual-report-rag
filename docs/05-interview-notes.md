@@ -174,3 +174,49 @@ A production RAG pipeline prevents false positives through a three-layer defense
 2. **Page-Level Anomaly Gating**: Do not filter tokens unconditionally. Gate token filtering on page-level defect density (e.g. `odd_char_count >= 15`). An isolated foreign name on a clean page has a low score (e.g. 6 odd characters) and is left untouched, eliminating false positives on 99% of pages.
 3. **Configurable Token Allowlisting (`keep_tokens`)**: Maintain an explicit list in configuration for verified legitimate entities. Even on a heavily degraded page that exceeds the defect threshold, allowlisted tokens are strictly preserved.
 4. **Informative Breakdown Reporting**: Rather than asserting an inflexible zero-character invariant across all chunks, report the exact chunks, pages, and Unicode characters retained, giving full transparency to engineering teams.
+
+---
+
+## Phase 2f: Quota-Proof Embeddings, Resilient Ingestion, and Corrupted Digit Repair
+
+### Question 23: How do you differentiate between transient per-minute rate limits and hard daily account quotas, and why is this distinction critical?
+**Answer:**
+Cloud AI APIs enforce multiple distinct quota buckets:
+1. **Per-Minute Request Pacing (e.g. 100 requests/minute)**: Transient concurrency limits caused by temporary bursts. These are remediated by pausing for a brief backoff window (e.g. 20–30 seconds) and retrying.
+2. **Daily Aggregate Ceilings (e.g. 1,000 embedding calls/day on Gemini Free Tier)**: Hard daily volume caps with reset delays spanning 18–24 hours (`~75,600s`).
+
+Treating a daily quota exhaustion like a transient rate limit is a severe engineering mistake: the client uselessly retries across 5 attempts, blocks workers, and eventually crashes with an unhandled exception.
+In our architecture:
+- `gemini.py` inspects error details for `"PerDay"` or retry delays $> 300\text{s}$.
+- If detected, it immediately raises a specialized `DailyQuotaExceeded` with **zero retries**.
+- The CLI catches this, prints exact stored and remaining chunk counts along with estimated resume time, and exits cleanly with exit code 2.
+- Because chunk insertion is idempotent and commits after every batch, all progress is preserved in ChromaDB, enabling effortless resumption without `--reset`.
+
+---
+
+### Question 24: Why split `BaseProvider` into separate `EmbeddingProvider` and `GenerationProvider` interfaces?
+**Answer:**
+Combining embedding and generation into a single monolithic interface violates the **Interface Segregation Principle (ISP)** and the **Single Responsibility Principle (SRP)**:
+1. **Asymmetric Resource Requirements**: In modern production RAG, embeddings are frequently served locally (e.g. FastEmbed ONNX on CPU) to eliminate external API rate limits and network latency during large batch ingestion, while generation requires massive parameter scale (e.g. Gemini 3.5 Flash or Claude 3.5 Sonnet) served via cloud APIs.
+2. **Lean Dependency Boundaries**: Ingestion pipelines and vector stores only depend on `EmbeddingProvider.embed()`, completely decoupled from generation credentials or LLM tokenizers. Conversely, generation and evaluation modules only depend on `GenerationProvider.generate()`.
+3. **Pluggability & Testability**: Switching the embedding backend (e.g. from local FastEmbed `BAAI/bge-base-en-v1.5` to Gemini `gemini-embedding-001`) requires changing one string in `settings.yaml`, without modifying generation logic or requiring dummy generation methods on local embedders.
+
+---
+
+### Question 25: How do you handle damaged PDF font CMaps without risking hallucinated character replacements or losing critical figures?
+**Answer:**
+PDF fonts frequently suffer from corrupted `ToUnicode` CMap tables where visual characters map to unintended Unicode points (e.g. visual `7` mapping to Greek Yot `ϳ` `U+03F3`, or visual digits `0–9` mapping to Coptic numerals `\u03EC-\u03F5`).
+In high-stakes corporate reporting, there are two common bad approaches:
+1. **Blindly dropping tokens**: Dropping `26ϳ,021` obliterates the company's total annual revenue figure from the index.
+2. **Unchecked heuristic regex replacements**: Guessing replacements across letters (e.g. replacing `Đ` with `C`) risks corrupting legal names and foreign terminology.
+
+Our disciplined solution:
+1. **Diagnostic Frequency & Context Analysis**: Extract the corpus and rank the most frequent anomaly characters in `U+0100` to `U+0FFF` with two full context sentences each.
+2. **Evidence-Based Numerals-Only Lookup Table**: Only map characters where contexts prove consistent, unambiguous meaning across multiple pages:
+   - Digits `0–9`: `\u03EC-\u03F5` (confirmed in dates like `2026` and currency amounts).
+   - Comma `,`: `\u0355` (combining mark used consistently inside numbers and table cells).
+   - Period `.`: `\u0358` (combining mark at decimal points and sentence ends).
+   - Rupee symbol `₹`: `\u0F24` (Tibetan numeral 4 appearing before figures followed by `"crore"`).
+3. **Strict Prohibition on Letter Guessing**: Letters (such as `\u010F` for `b` in `"attriďutaďůe"`) and unconfirmed symbols (such as `\u0439` for `%`) are strictly excluded. Letter-corrupted words are safely filtered by the token filter on degraded pages.
+4. **Three-State Quality Provenance**: Pages are marked `"clean"` (no anomalies), `"repaired"` (digits restored, zero tokens dropped), or `"degraded"` (irrecoverable tokens dropped), ensuring full provenance transparency in retrieval metadata.
+

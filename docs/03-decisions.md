@@ -248,3 +248,75 @@ This document captures key design decisions, their rationale, alternatives consi
 * **Choice:** Defer OCR and isolate degraded pages cleanly via metadata.
 * **Reason:** 709 of 741 loaded pages (95.8%) extract crisply with native C-speed PyMuPDF (< 10 seconds total). Deferring OCR keeps the core ingestion pipeline lean, explainable, and fast, while the audit CSV and chunk metadata pinpoint exactly which 32 pages require visual OCR remediation in a future phase.
 * **Trade-off:** Users cannot retrieve numbers from the 32 degraded pages until the OCR phase is built.
+
+---
+
+### Decision 20: Gemini Free-Tier Daily Quota Discovery and Fast-Fail Architecture
+
+* **Context:** During full ingestion of 3,109 chunks with Google Gemini embeddings, the pipeline abruptly halted around chunk ~800 with HTTP 429 `RESOURCE_EXHAUSTED`. The underlying error details exposed a daily quota limit:
+  `quotaId: EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier`, limit `1000` requests/day, retry delay `~75,600s` (~21 hours).
+  The Phase 2b retry mechanism mistook this daily exhaustion for a transient per-minute rate limit, waited 22 seconds 5 times in vain, and crashed with an unhandled traceback.
+* **Options Considered:**
+  1. Retain the existing retry loop: Uselessly attempts retries when the quota window is 21 hours away.
+  2. Sleep for 21 hours: Blocks process execution and risks operating system termination.
+  3. Immediate detection and graceful fast-fail (`DailyQuotaExceeded`): Inspect error details for `"PerDay"` or retry delays $> 300\text{s}$. Raise `DailyQuotaExceeded` immediately with zero retries. In the CLI, print chunks stored so far, chunks remaining, and estimated resume time, exiting cleanly with exit code 2.
+* **Choice:** Immediate detection and graceful exit via `DailyQuotaExceeded`.
+* **Reason:** Daily quota ceilings cannot be resolved by short sleep loops. Fast-failing preserves all previously indexed chunks in ChromaDB, informs the developer of exact resume timing, and enables resuming without `--reset` once quota resets.
+* **Trade-off:** Requires differentiating per-minute transient throttles (~20-30s) from daily account quotas.
+
+---
+
+### Decision 21: Local Embeddings by Default (FastEmbed ONNX) and Gemini Cloud Generation
+
+* **Context:** A daily limit of 1,000 embedding calls renders Gemini free-tier embeddings impractical for active development, automated CI, and multi-document ingestion (~3,109 chunks requires 4 days of free quota). However, LLM synthesis requires powerful reasoning best served by Gemini 2.5/3.5 Flash models.
+* **Options Considered:**
+  1. Mandate paid Gemini API billing for all development: Imposes monetary costs on students, interviewers, and open-source contributors.
+  2. Full PyTorch local models (`sentence-transformers`): Requires multi-gigabyte PyTorch and CUDA installations, complicating setup on Windows.
+  3. Lightweight local ONNX embeddings (`fastembed`) by default, Gemini for generation: Use `BAAI/bge-base-en-v1.5` (768 dimensions) running via ONNX Runtime without PyTorch. Ingestion requires zero API keys and has zero quota limits. Generation uses Gemini via cloud API.
+* **Choice:** Local FastEmbed (`BAAI/bge-base-en-v1.5`) as default embedder, Gemini for generation, with Gemini embeddings available via configuration.
+* **Reason:** Ingestion of 3,109 chunks runs completely offline in under 60 seconds on CPU, costs \$0, and never exhausts API quotas. `BAAI/bge-base-en-v1.5` produces 768-dimensional embeddings, matching Gemini's vector dimension. Switching between local and Gemini embeddings is a single string change in `settings.yaml`.
+* **Trade-off:** FastEmbed downloads an ONNX model file (~210MB) once upon initial use; automated unit tests use mocks and lazy loading to keep standard test runs offline.
+
+---
+
+### Decision 22: Interface Segregation: Separate EmbeddingProvider and GenerationProvider
+
+* **Context:** In Phase 1, `BaseProvider` combined both `embed(texts)` and `generate(prompt)` into a single interface. When using local ONNX embeddings alongside cloud-based Gemini text generation, forcing a single provider class to implement both models violates the Interface Segregation Principle (the "I" in SOLID).
+* **Options Considered:**
+  1. Keep a single unified `BaseProvider` and implement dummy/noop `generate()` in `LocalEmbeddingProvider`: Violates LSP and ISP; confuses callers when an embedder cannot generate text.
+  2. Split into two discrete abstract base classes: `EmbeddingProvider` (`embed()`) and `GenerationProvider` (`generate()`), with `FakeProvider` implementing both for test convenience.
+* **Choice:** Split into `EmbeddingProvider` and `GenerationProvider` with separate factory functions (`get_embedder` and `get_generator`).
+* **Reason:** Decouples embedding backends from text generation backends. Application pipelines only request the exact capability they need (`indexer.py` requests `EmbeddingProvider`; generation modules request `GenerationProvider`).
+* **Trade-off:** Call sites that previously instantiated `get_provider` must specify whether they need an embedder or generator.
+
+---
+
+### Decision 23: Confirmed Glyph Repair for Corrupted Numerals and Punctuation (Zero Guessing on Letters)
+
+* **Context:** In `tcs-ar-26.pdf`, 17 pages exhibited font encoding defects where numbers in headings and financial disclosures extracted as corrupted Greek/Coptic symbols (e.g. `"26ϳ,021"`, `"₹Ϯ͕ ϲϳ͕ ϬϮ1"`). Dropping these tokens obliterated headline financial figures (revenue, operating income, dividends).
+* **Options Considered:**
+  1. Heuristic regex substitutions for letters and numbers: Highly prone to false positives and hallucinated words.
+  2. Empirical, diagnostic-verified 1:1 lookup table applied *before* token filtering:
+     - Ran a full-corpus diagnostic of top 25 characters in `\u0100` to `\u0FFF`.
+     - Confirmed that digits 0–9 map strictly to Coptic/Greek block `U+03EC` to `U+03F5`.
+     - Confirmed that `U+0355` (combining right arrowhead below) is used as comma `,`, `U+0358` (combining dot) is used as period `.`, and `U+0F24` (Tibetan digit 4) is used as rupee sign `₹`.
+     - Excluded unconfirmed letters and symbols (`\u0439` for `%`, `\u010F` for `b`, `\u037E`/`\u037F` for parentheses).
+* **Choice:** Empirical glyph lookup table (`ingestion/glyph_repair.py`) applied before token filtering, strictly confined to confirmed digits, commas, periods, and currency symbols.
+* **Reason:** Heals 429 corrupted numerical characters across TCS without guessing letters. `"26ϳ,021"` becomes `"267,021"`, `"₹Ϯ͕ ϲϳ͕ ϬϮ1"` becomes `"₹2,67,021"`, and `"ϮϬϮϲ"` becomes `"2026"`. Financial figures are restored to grounded accuracy.
+* **Trade-off:** Unconfirmed characters (such as `\u0439` where `%` sits) are not substituted without user approval, preserving conservatism.
+
+---
+
+### Decision 24: Lowering Anomaly Threshold to 1 with Three-State Quality Labeling
+
+* **Context:** In Phase 2d.1, `odd_char_count_threshold` was set to 15 to avoid false positives on `"Mondelēz"` (`odd_char_count = 6`). However, this left 14 TCS pages with 1–13 corrupted characters unfiltered. Now that `glyph_repair.py` repairs digits upfront and allowlists `"Mondelēz"`, the threshold can be lowered safely.
+* **Options Considered:**
+  1. Keep threshold at 15: Leaves residual corrupted characters in 14 TCS pages.
+  2. Lower threshold to 1: With glyph repair applied first, any remaining character in `\u0100-U+052F` is true font corruption (unless in `keep_tokens`).
+* **Choice:** Lower threshold to 1 and introduce three-state quality labeling:
+  - `"clean"`: No repairs performed, zero tokens dropped.
+  - `"repaired"`: Corrupted digits/punctuation successfully repaired, zero tokens dropped.
+  - `"degraded"`: At least one irrecoverable token dropped.
+* **Reason:** Ensures zero corrupted font glyphs enter chunks in TCS, while providing full provenance tracking. Pages that merely underwent numeral repair are marked `"repaired"` rather than degraded.
+* **Trade-off:** Pages with minor single-token letter corruption are now marked `"degraded"` rather than passing as clean.
+

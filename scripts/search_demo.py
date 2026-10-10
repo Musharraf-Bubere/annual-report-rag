@@ -4,7 +4,7 @@ import argparse
 import sys
 
 from annual_report_rag.config import load_settings
-from annual_report_rag.providers.factory import get_provider
+from annual_report_rag.providers.factory import get_embedder
 from annual_report_rag.retrieval.store import ChromaStore
 
 
@@ -29,17 +29,18 @@ def run_search(question: str) -> None:
     store = ChromaStore(
         persist_path=settings.storage.vector_store_path,
         collection_name=settings.storage.collection_name,
-        embedding_model=settings.provider.embedding_model,
-        embedding_dimension=settings.provider.embedding_dimension,
+        embedding_provider=settings.embedding.provider,
+        embedding_model=settings.embedding.model,
+        embedding_dimension=settings.embedding.dimension,
     )
 
     if store.count() == 0:
         print("Vector store is empty. Please run scripts/ingest.py first.")
         return
 
-    provider = get_provider(settings)
-    print(f"Searching for: '{question}'")
-    vectors = provider.embed([question], purpose="query")
+    embedder = get_embedder(settings)
+    print(f"Searching for: '{question}' using {settings.embedding.provider} ({settings.embedding.model})")
+    vectors = embedder.embed([question], purpose="query")
     if not vectors:
         print("Failed to generate query embedding.")
         return
@@ -60,7 +61,7 @@ def main() -> None:
     """Validates CLI input and triggers search."""
     args = parse_args()
     if not args.question:
-        print("Usage: uv run python scripts/search_demo.py \"<your question>\"")
+        print("Usage: python scripts/search_demo.py \"<your question>\"")
         sys.exit(1)
     run_search(args.question)
 

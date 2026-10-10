@@ -20,16 +20,48 @@ class RetryConfig:
 
 
 @dataclass(frozen=True)
-class ProviderConfig:
-    """Holds configuration for model provider, dimensions, batching, and retries."""
+class EmbeddingConfig:
+    """Holds configuration for embedding provider, dimension, batching, and retries."""
 
-    name: str
-    embedding_model: str
-    generation_model: str
-    embedding_dimension: int
+    provider: str
+    model: str
+    dimension: int
     batch_size: int
     max_items_per_minute: int
     retry: RetryConfig
+
+    @property
+    def name(self) -> str:
+        """Alias for provider name."""
+        return self.provider
+
+    @property
+    def embedding_model(self) -> str:
+        """Alias for embedding model name."""
+        return self.model
+
+    @property
+    def embedding_dimension(self) -> int:
+        """Alias for embedding dimension."""
+        return self.dimension
+
+
+@dataclass(frozen=True)
+class GenerationConfig:
+    """Holds configuration for generation provider and model."""
+
+    provider: str
+    model: str
+
+    @property
+    def name(self) -> str:
+        """Alias for generation provider name."""
+        return self.provider
+
+    @property
+    def generation_model(self) -> str:
+        """Alias for generation model name."""
+        return self.model
 
 
 @dataclass(frozen=True)
@@ -64,7 +96,7 @@ class QualityConfig:
 
     single_letter_ratio_threshold: float = 0.15
     odd_char_ratio_threshold: float = 0.002
-    odd_char_count_threshold: int = 15
+    odd_char_count_threshold: int = 1
     number_split_threshold: int = 3
     corrupted_glyph_range_start: str = "\u0100"
     corrupted_glyph_range_end: str = "\u052F"
@@ -75,12 +107,18 @@ class QualityConfig:
 class Settings:
     """Aggregates all application configurations and secrets into a single typed object."""
 
-    provider: ProviderConfig
+    embedding: EmbeddingConfig
+    generation: GenerationConfig
     ingestion: IngestionConfig
     retrieval: RetrievalConfig
     storage: StorageConfig
     quality: QualityConfig
     gemini_api_key: str | None = None
+
+    @property
+    def provider(self) -> EmbeddingConfig:
+        """Backward compatibility alias pointing to embedding settings."""
+        return self.embedding
 
 
 def load_yaml_file(file_path: Path) -> dict[str, Any]:
@@ -102,16 +140,37 @@ def parse_retry_config(retry_data: dict[str, Any]) -> RetryConfig:
     )
 
 
-def parse_provider_config(data: dict[str, Any]) -> ProviderConfig:
-    """Parses provider, rate limit, and retry parameters into a typed ProviderConfig."""
-    return ProviderConfig(
-        name=str(data.get("name", "gemini")),
-        embedding_model=str(data.get("embedding_model", "gemini-embedding-2")),
-        generation_model=str(data.get("generation_model", "gemini-3.5-flash-lite")),
-        embedding_dimension=int(data.get("embedding_dimension", 768)),
-        batch_size=int(data.get("batch_size", 20)),
-        max_items_per_minute=int(data.get("max_items_per_minute", 80)),
-        retry=parse_retry_config(data.get("retry", {})),
+def parse_embedding_config(data: dict[str, Any]) -> EmbeddingConfig:
+    """Parses embedding provider, model, dimension, and retry configurations."""
+    # Support both new 'embedding' section and legacy 'provider' section
+    provider_name = str(data.get("provider", data.get("name", "local")))
+    model_name = str(
+        data.get("model", data.get("embedding_model", "BAAI/bge-base-en-v1.5"))
+    )
+    dimension = int(data.get("dimension", data.get("embedding_dimension", 768)))
+    batch_size = int(data.get("batch_size", 20))
+    max_items_per_minute = int(data.get("max_items_per_minute", 80))
+    retry = parse_retry_config(data.get("retry", {}))
+
+    return EmbeddingConfig(
+        provider=provider_name,
+        model=model_name,
+        dimension=dimension,
+        batch_size=batch_size,
+        max_items_per_minute=max_items_per_minute,
+        retry=retry,
+    )
+
+
+def parse_generation_config(data: dict[str, Any]) -> GenerationConfig:
+    """Parses generation provider and model configurations."""
+    provider_name = str(data.get("provider", data.get("name", "gemini")))
+    model_name = str(
+        data.get("model", data.get("generation_model", "gemini-3.5-flash-lite"))
+    )
+    return GenerationConfig(
+        provider=provider_name,
+        model=model_name,
     )
 
 
@@ -148,7 +207,7 @@ def parse_quality_config(data: dict[str, Any]) -> QualityConfig:
             data.get("odd_char_ratio_threshold", 0.002)
         ),
         odd_char_count_threshold=int(
-            data.get("odd_char_count_threshold", 15)
+            data.get("odd_char_count_threshold", 1)
         ),
         number_split_threshold=int(
             data.get("number_split_threshold", 3)
@@ -175,8 +234,12 @@ def load_settings(
         load_dotenv(override=False)
 
     data = load_yaml_file(Path(config_path))
+    raw_emb = data.get("embedding", data.get("provider", {}))
+    raw_gen = data.get("generation", data.get("provider", {}))
+
     return Settings(
-        provider=parse_provider_config(data.get("provider", {})),
+        embedding=parse_embedding_config(raw_emb),
+        generation=parse_generation_config(raw_gen),
         ingestion=parse_ingestion_config(data.get("ingestion", {})),
         retrieval=RetrievalConfig(top_k=int(data.get("retrieval", {}).get("top_k", 5))),
         storage=parse_storage_config(data.get("storage", {})),
