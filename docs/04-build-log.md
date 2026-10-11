@@ -533,3 +533,17 @@ A 12-question seed set is too small for statistically meaningful evaluation slic
 5. **Direct Source-PDF Page Lookup Helper (`scripts/find_pages.py`) & Corrected 40-Question Golden Set**:
    - Added `scripts/find_pages.py` (read-only direct PyMuPDF scan over `data/raw/*.pdf`, no vector store or API calls) to report the 1-based PDF page indices containing each `must_contain` token (normalising whitespace, stripping thousands/Indian grouping separators, supporting `"a|b"` alternatives, and ignoring spaces inside digits on `tcs-ar-26` pages), saving reports to gitignored `data/eval/runs/page_lookup_<timestamp>.md`.
    - Updated `data/eval/golden_questions.json` with the corrected 40-question set: `40` total (`30` `dev`: `29` ready, `1` draft; `10` `test`: `10` ready, `0` draft), `39` `ready_unverified` (`12` with `human_verified=true`), and `1` `draft_needs_fill` (`q27`, skipped by default).
+
+---
+
+## Phase 4d: `baseline-v1-full` and `baseline-v1-full-repeats` on 29 Ready `dev` Questions
+
+### Overview
+Evaluated the corrected `dev` split (`29` ready questions out of `30`; `q27` skipped as `draft_needs_fill`) with zero code, prompt, retrieval, or config modifications:
+1. **`baseline-v1-full` (`--judge`, `split=dev`)**:
+   - **Retrieval ($n=25$ answerable)**: `page_hit@1 = 0.4800`, `page_hit@3 = 0.7600`, `page_hit@6 = 0.8000`, `MRR = 0.6280`, `text_hit_any@1/@3/@6 = 0.6000 / 0.6800 / 0.8000`, `text_hit_all@1/@3/@6 = 0.5600 / 0.6800 / 0.8000`, `distinct_pages@6 = 5.00`.
+   - **Answer Outcomes ($n=29$)**: `18 CORRECT`, `2 WRONG` (`q03`, `q25`), `5 FALSE_REFUSAL` (`q05`, `q14`, `q22`, `q26`, `q30`), `4 CORRECT_REFUSAL` (`q10`, `q11`, `q38`, `q39`), `0 ANSWERED_ANYWAY`. `grounded_rate = 0.8000`, `questions_with_unsupported_numbers = 1` (`['q33']`, where the chunk prints `"2025-26"` while the answer echoes `"fiscal 2026"` from the question).
+   - **Faithfulness Judge ($n=20$ grounded answers)**: `faithfulness_rate = 1.0000` (`20/20`), `citation_precision = 1.0000` (`34/34`), `judge_error = 0`.
+2. **`baseline-v1-full-repeats` (`--repeats 3`, `split=dev`, $n=87$ passes)**:
+   - **`flip_rate = 0.0000`**: All 29 `dev` questions produced the exact same deterministic outcome across all 3 repeats (`accuracy = 0.7586`, `answerable_accuracy = 0.7200`).
+

@@ -105,10 +105,10 @@ uv run python scripts/run_judge_calibration.py
    uv run python scripts/show_candidates.py --ids q13,q14
 
    # Run dev split with LLM judge (excludes draft_needs_fill by default)
-   uv run python scripts/run_eval.py --label baseline-v1 --judge
+   uv run python scripts/run_eval.py --label baseline-v1-full --judge
 
-   # Measure repeat stability across 3 repeats
-   uv run python scripts/run_eval.py --label baseline-v1-repeats --repeats 3 --limit 6
+   # Measure repeat stability across 3 repeats on dev split
+   uv run python scripts/run_eval.py --label baseline-v1-full-repeats --repeats 3
 
    # Compare two runs
    uv run python scripts/compare_runs.py data/eval/results/<runA>.metrics.json data/eval/results/<runB>.metrics.json
@@ -120,6 +120,6 @@ uv run python scripts/run_judge_calibration.py
 
 1. **Same-Family Judge Bias (Self-Preference / Shared Blind Spots)**: Both the answer generator and the faithfulness judge currently use the same `GenerationProvider` (`gemini-3.1-flash-lite-preview`). An LLM judge from the same model family as the generator is systematically biased toward agreeing with the generator's phrasing and shares the same reasoning blind spots. Always spot-check the generated `data/eval/runs/<ts>_<label>_judge_review.md` by hand.
 2. **Sub-Claim Granularity in Multi-Citation Sentences**: The judge prompt grades whether each cited passage *"supports at least one claim in the answer that cites it."* When a sentence makes multiple sub-claims and attaches `[5][6]` at the end, if `[6]` supports two of the three sub-claims while `[5]` supports all three, `[6]` is marked `supports=True`.
-3. **Unverified & Draft Questions (`human_verified = false`)**: All 40 questions in `golden_questions.json` currently have `human_verified=false` (`22` `ready_unverified`, `18` `draft_needs_fill`). Unverified questions must not be used for final headline numbers until verified against the source PDFs.
-4. **Weak Lexical Labels & Single Corpus**: Deterministic `must_contain` labels only check token presence, and all current questions come from two FY2025–26 Indian IT services reports (`tcs-ar-26`, `infosys-ar-26`).
+3. **Unverified & Draft Questions (`human_verified = false`)**: In `golden_questions.json`, `28` of `40` questions still have `human_verified=false` (`12` are `human_verified=true`; `39` are `ready_unverified` and `1` is `draft_needs_fill`). Unverified questions must not be used for final headline numbers until verified against the source PDFs.
+4. **Weak Lexical Labels & Single Corpus**: Deterministic `must_contain` labels only check token presence (and exact normalized token equality on numbers, e.g. `"48.00"` vs `"48"` on `q25`), and all current questions come from two FY2025–26 Indian IT services reports (`tcs-ar-26`, `infosys-ar-26`).
 
