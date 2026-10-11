@@ -173,9 +173,12 @@ Corporate annual reports frequently employ stylized typography, custom subsetted
 4. **Visual OCR Deferred**:
    - Visual OCR (e.g. Tesseract) to reconstruct words from the 30 degraded pages is deferred to a future phase to maintain a lean, high-throughput native extraction pipeline for the 95.8% clean corpus.
 
-## Evaluation (`baseline-v0`)
+## Evaluation (`baseline-v0` & `baseline-v1`)
 
-The repository includes a deterministic evaluation harness (`src/annual_report_rag/evaluation/`) and a 12-question golden seed set (`data/eval/golden_questions.json`) covering factual lookups, cross-company comparisons, out-of-scope unanswerable queries, and adversarial prompt-injection probes. See [`docs/06-evaluation.md`](docs/06-evaluation.md) for full documentation on metrics, golden set rules, and limitations.
+The repository includes a deterministic + LLM-as-a-judge evaluation harness (`src/annual_report_rag/evaluation/`), a 6-case synthetic judge calibration suite (`data/eval/judge_calibration.json`), and a 12-question golden seed set (`data/eval/golden_questions.json`) with a `dev` / `test` split covering factual lookups, cross-company comparisons, out-of-scope unanswerable queries, and adversarial prompt-injection probes.
+
+> [!IMPORTANT]
+> **Split Discipline**: Tune retrieval, prompts, and thresholds on `--split dev` (the default); run `--split test` only for final milestone numbers. See [`docs/06-evaluation.md`](docs/06-evaluation.md) for full documentation on metrics, faithfulness judging, calibration, and limitations.
 
 ### Running the Evaluation Harness
 
@@ -183,34 +186,45 @@ The repository includes a deterministic evaluation harness (`src/annual_report_r
    ```powershell
    uv run python scripts/run_eval.py --validate-only
    ```
-2. **Run retrieval-only evaluation (offline, zero API calls)**:
+2. **Run synthetic judge calibration (`ExampleCo` cases, 6 Gemini calls)**:
+   ```powershell
+   uv run python scripts/run_judge_calibration.py
+   ```
+3. **Run retrieval-only evaluation (offline, zero API calls)**:
    ```powershell
    uv run python scripts/run_eval.py --retrieval-only --label baseline-v0-retrieval
    ```
-3. **Run full evaluation (cached in `data/eval/cache/` keyed by question, settings, prompt, and store fingerprint)**:
+4. **Run full evaluation with the faithfulness judge (cached in `data/eval/cache/`)**:
    ```powershell
-   uv run python scripts/run_eval.py --label baseline-v0
+   uv run python scripts/run_eval.py --label baseline-v1 --judge --split dev
    ```
-4. **Compare two evaluation runs**:
+5. **Run multi-repeat stability evaluation (`flip_rate` across $N$ generation passes)**:
+   ```powershell
+   uv run python scripts/run_eval.py --label baseline-v1-repeats --repeats 3 --limit 6
+   ```
+6. **Compare two evaluation runs**:
    ```powershell
    uv run python scripts/compare_runs.py data/eval/results/<runA>.metrics.json data/eval/results/<runB>.metrics.json
    ```
 
-### Baseline v0 Summary (`12` seed questions: `9` answerable, `3` unanswerable/adversarial)
+### Baseline v1 Summary (`split = dev`, `12` seed questions: `9` answerable, `3` unanswerable/adversarial)
 
 > [!WARNING]
-> **Preliminary Benchmark**: Evaluated on $n = 12$ seed questions (`human_verified = false`). Full committed reports are in [`data/eval/results/`](data/eval/results/).
+> **Preliminary Benchmark**: Evaluated on $n = 12$ seed questions (`human_verified = false`). Latency `p95` is not statistically meaningful below 20 samples (`n < 20`). Full committed reports are in [`data/eval/results/`](data/eval/results/).
 
-| Metric Category | Metric | `baseline-v0` Value |
+| Metric Category | Metric | `baseline-v1` Value |
 | :--- | :--- | :--- |
-| **Retrieval ($n=9$ answerable)** | `page_hit@1` / `page_hit@3` / `page_hit@6` | `0.4444` / `0.6667` / `1.0000` |
-| **Retrieval ($n=9$ answerable)** | `MRR` / `text_hit@6` | `0.6519` / `0.7778` |
+| **Retrieval ($n=9$ answerable)** | `page_hit@1` / `page_hit@3` / `page_hit@6` (comparison $k$ scaled by sources) | `0.4444` / `0.7778` / `1.0000` |
+| **Retrieval ($n=9$ answerable)** | `MRR` / `distinct_pages@6` | `0.6519` / `5.22` |
+| **Retrieval ($n=9$ answerable)** | `text_hit_any@1/@3/@6` \| `text_hit_all@1/@3/@6` | `0.6667 / 0.6667 / 0.7778` \| `0.6667 / 0.6667 / 0.7778` |
 | **Answer Outcomes ($n=12$)** | `CORRECT` / `WRONG` / `FALSE_REFUSAL` | `6` / `1` / `2` |
 | **Refusal & Safety ($n=3$)** | `CORRECT_REFUSAL` / `ANSWERED_ANYWAY` | `3` / `0` |
 | **Grounding & Numbers** | `grounded_rate` (answerable) / `unsupported_numbers` | `0.7778` / `0` |
-| **Quality Slice: `all_clean` ($n=4$)** | `page_hit@6` / `MRR` / `text_hit@6` / `CORRECT` | `1.0000` / `0.8750` / `1.0000` / `4/4` |
-| **Quality Slice: `mixed` ($n=1$)** | `page_hit@6` / `MRR` / `text_hit@6` / `CORRECT` | `1.0000` / `0.5000` / `1.0000` / `1/1` |
-| **Quality Slice: `all_degraded` ($n=4$)** | `page_hit@6` / `MRR` / `text_hit@6` / `CORRECT` | `1.0000` / `0.4667` / `0.5000` / `1/4` |
-| **Latency (`p50` / `p95`)** | `retrieve_ms` / `generate_ms` / `total_ms` | `30.86 / 92.71 ms` \| `1025.96 / 8850.71 ms` \| `1054.59 / 8886.28 ms` |
+| **Faithfulness Judge ($n=7$ grounded)** | `faithfulness_rate` / `citation_precision` / `judge_error` | `1.0000` (`7/7`) / `1.0000` (`12/12`) / `0` |
+| **Judge Calibration ($n=6$ synthetic)** | `ExampleCo` synthetic agreement (`cal01`–`cal06`) | `1.0000` (`6/6`) |
+| **Repeat Stability (`q01`–`q06`, 3 repeats)** | `flip_rate` / `accuracy (min–max)` | `0.0000` / `0.5000 (0.5000–0.5000)` |
+| **Quality Slice: `all_clean` ($n=4$)** | `page_hit@6` / `MRR` / `text_hit_all@6` / `CORRECT` | `1.0000` / `0.8750` / `1.0000` / `4/4` |
+| **Quality Slice: `mixed` ($n=1$)** | `page_hit@6` / `MRR` / `text_hit_all@6` / `CORRECT` | `1.0000` / `0.5000` / `1.0000` / `1/1` |
+| **Quality Slice: `all_degraded` ($n=4$)** | `page_hit@6` / `MRR` / `text_hit_all@6` / `CORRECT` | `1.0000` / `0.4667` / `0.5000` / `1/4` |
+| **Latency (`p50` / `p95` / `max`, $n=12$)** | `retrieve_ms` \| `generate_ms` \| `total_ms` | `30.86 / 92.71 / 121.55 ms` \| `1025.96 / 8850.71 / 12446.63 ms` \| `1054.59 / 8886.28 / 12475.15 ms` |
 | **Token Usage** | `avg_input_tokens` / `avg_output_tokens` | `2073.9` / `32.0` |
-

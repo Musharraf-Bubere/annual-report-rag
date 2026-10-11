@@ -330,5 +330,45 @@ Deterministic `must_contain` labels (such as requiring normalized numeric token 
 - **Advantages**: Fast, 100% deterministic, zero API cost, immune to LLM-judge bias, and when implemented with exact numeric token equality (`"11,000%"` $\to$ `"11000"` $\neq$ `"110"`), they catch missing figures without substring false positives.
 - **Limitations**: A weak label cannot verify that `"4.6%"` in the answer is attached to the right metric or fiscal year (e.g., if a perverse answer said *"Revenue was not 267,021 crore and growth was not 4.6%"*, `must_contain` would still match). That is why production RAG evaluation pairs deterministic lexical/numeric checks (Phase 4a) with an LLM-as-a-judge faithfulness/relevance check (Phase 4b).
 
+---
 
+## Phase 4b: LLM-as-a-Judge, Faithfulness vs. Correctness, Dev/Test Split, and Repeats
 
+### Question 37: What are the main pitfalls of using an LLM-as-a-judge in RAG evaluation, and how did you mitigate them?
+**Answer:**
+1. **Same-Family (Self-Preference) Bias**: When the judge uses the same model family (`gemini-3.1-flash-lite-preview`) as the answer generator, both share similar reading comprehension quirks and blind spots. If the generator misreads an ambiguous financial table, the same model acting as judge is more likely to agree with that misreading than an independent human auditor or cross-family model.
+2. **Excerpt Truncation Errors**: Passing short 200-character citation previews to a judge causes false unfaithful verdicts whenever the supporting sentence sits at the end of a 1,000-character chunk. In `evaluation/judge.py`, we pass the **full text** of every cited chunk (`cited_passages: dict[int, str]`).
+3. **Unvalidated Judge Prompts**: An untested judge prompt can fail on formatting differences (such as Indian `6,17,437` vs. Western `617,437`) or fail to catch right-number/wrong-label swaps (*operating margin* vs. *net profit margin*). We built a 6-case synthetic calibration benchmark (`data/eval/judge_calibration.json`, `scripts/run_judge_calibration.py`) and verified `6/6` (`100%`) agreement before running on real answers.
+4. **Blind Trust in Aggregate Judge Scores**: Aggregate `faithfulness_rate` can hide subtle multi-citation granularity issues. Our runner writes a gitignored `data/eval/runs/<ts>_<label>_judge_review.md` sampling up to 10 judged answers with full cited passages for human review.
+
+---
+
+### Question 38: Explain the difference between Answer Correctness, Faithfulness, and Citation Precision, with concrete examples from your evaluation runs.
+**Answer:**
+- **Answer Correctness (`outcome == CORRECT`)**: Does the answer contain the ground-truth information requested by the user (`must_contain` satisfied, no `must_not_contain`)?
+- **Faithfulness (`faithful == True`)**: Is every factual claim in the answer supported by the set of passages it cites?
+- **Citation Precision (`supports == True` per citation `[n]`)**: Does *each individual* cited passage `[n]` actually support a claim attributed to it, rather than being an irrelevant ride-along citation?
+
+**Concrete examples from `baseline-v1` and calibration**:
+1. **Faithful (`1.0`) AND Citation-Precise (`1.0`), but `WRONG` on Correctness (`q03` — TCS dividend)**:
+   - The answer stated that TCS proposed a final dividend of `11,000%` of the paid-up value `[3]` (`tcs-ar-26` PDF p36). Every word of that answer is 100% faithful to passage `[3]`, so the judge rightly scored `faithful=True` and `[3]=True`. However, deterministic correctness marked `q03` as `WRONG` because the user needed the `₹110` per-share dividend amount (which was in an unretrieved chunk `p36-c0` and dropped on `p8`).
+2. **Faithful (`1.0`) overall, but Low Citation Precision (`cal04` & `q09`)**:
+   - In synthetic case `cal04`, the answer states revenue was `₹14,200 crore [1][2]`, where `[1]` has the revenue figure and `[2]` is about board meetings. Here `[1]=True` and `[2]=False` (`citation_precision = 0.50`).
+   - In `q09`, the sentence *"Infosys reported a consolidated revenue growth of 9.6% (reaching ₹1,78,650 crore) and a constant currency revenue growth of 3.1% [5][6]"* cites `[5]` (p77, containing all 3 numbers) and `[6]` (p33, containing `9.6%` and `₹1,78,650 crore`, but not `3.1%`). Because passage-level citation precision asks whether `[6]` supports *at least one* claim in the answer that cites it, `[6]` scored `supports=True`—highlighting the difference between passage-level citation support and sub-sentence claim-to-citation alignment.
+
+---
+
+### Question 39: Why maintain a `dev` / `test` split in a golden evaluation set?
+**Answer:**
+Every time an engineer inspects failed questions and adjusts chunk overlap, `min_score`, keyword boosting, or system prompt rules to fix those specific failures, information from the evaluation set leaks into the pipeline design. If you tune and report final performance on the exact same small set of questions, your benchmark score measures how well you solved those known cases rather than how well the RAG system generalizes to unseen analyst queries.
+By tagging questions with `split: "dev" | "test"` (`scripts/run_eval.py --split dev` by default), we enforce the rule: **iterate and tune on `dev`, and run `test` only for final milestone numbers.**
+
+---
+
+### Question 40: How does LLM nondeterminism affect RAG evaluation, and what does `flip_rate` measure?
+**Answer:**
+At `temperature = 1.0` (the recommended default for Gemini 3.x models), token sampling is non-deterministic. On borderline questions—such as degraded table chunks or multi-step comparisons—a single evaluation run (`--repeats 1`) might pass by luck on one run and fail on the next, making it impossible to tell whether a code change genuinely improved the system or just rolled better random tokens.
+With `--repeats N` (e.g. `--repeats 3`), we run retrieval once per question and execute $N$ independent generation calls (bypassing the cache for repeats `1..N-1`). We then compute:
+- **`flip_rate`**: The fraction of evaluated questions whose deterministic `outcome` (`CORRECT`, `WRONG`, `FALSE_REFUSAL`, etc.) was **not** identical across all $N$ repeats.
+- **`accuracy (min–max)`**: The mean accuracy across all repeat runs along with the worst-repeat and best-repeat bounds.
+On `baseline-v1-repeats` (`--repeats 3 --limit 6`), `flip_rate` was `0.0000` (`accuracy = 0.5000 (0.5000–0.5000)`), confirming that our strict grounding prompt produces highly stable outcomes across repeated sampling.

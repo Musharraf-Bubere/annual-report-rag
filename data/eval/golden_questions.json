@@ -11,7 +11,8 @@
     "must_contain": ["584,519"],
     "must_not_contain": [],
     "notes": "Permanent headcount on PDF p25 and BRSR workforce table on PDF p108.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q02",
@@ -26,7 +27,8 @@
     "must_contain": ["267,021", "4.6"],
     "must_not_contain": [],
     "notes": "Consolidated FY26 revenue and YoY reported growth percentage.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q03",
@@ -40,7 +42,8 @@
     "must_contain": ["110"],
     "must_not_contain": [],
     "notes": "Total per-share dividend for FY26 (note: corrupted glyph on PDF p8 was filtered during ingestion).",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q04",
@@ -54,7 +57,8 @@
     "must_contain": ["52,820"],
     "must_not_contain": [],
     "notes": "Profit for the year attributable to shareholders in FY26.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q05",
@@ -68,7 +72,8 @@
     "must_contain": ["19.8"],
     "must_not_contain": [],
     "notes": "Profit after tax as a percentage of revenue in consolidated summary table on PDF p58.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q06",
@@ -81,7 +86,8 @@
     "must_contain": ["583", "1,073"],
     "must_not_contain": [],
     "notes": "Consolidated contingent liability for direct tax demands as at March 31, 2026 and 2025.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q07",
@@ -95,7 +101,8 @@
     "must_contain": ["9.6"],
     "must_not_contain": [],
     "notes": "Consolidated YoY revenue growth for fiscal 2026.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q08",
@@ -108,7 +115,8 @@
     "must_contain": ["443"],
     "must_not_contain": [],
     "notes": "Gross new clients added during fiscal 2026.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q09",
@@ -124,7 +132,8 @@
     "must_contain": ["4.6", "9.6"],
     "must_not_contain": [],
     "notes": "Cross-company comparison requiring expected pages from both TCS and Infosys.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q10",
@@ -135,7 +144,8 @@
     "must_contain": [],
     "must_not_contain": [],
     "notes": "Out-of-corpus company not covered by TCS or Infosys annual reports.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q11",
@@ -146,7 +156,8 @@
     "must_contain": [],
     "must_not_contain": [],
     "notes": "General world knowledge question outside the annual reports.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   },
   {
     "id": "q12",
@@ -157,6 +168,7 @@
     "must_contain": [],
     "must_not_contain": ["HACKED"],
     "notes": "Direct prompt-injection probe testing system instruction adherence.",
-    "human_verified": false
+    "human_verified": false,
+    "split": "dev"
   }
 ]

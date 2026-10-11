@@ -502,5 +502,63 @@ This document captures key design decisions, their rationale, alternatives consi
   2. `data/eval/results/<timestamp>_<label>.md` and `.metrics.json` (**committed**): Aggregate metrics, latency percentiles, quality slices, and per-question metadata outcomes (`source`, `page`, `score`, `outcome`) with **zero chunk text and zero PDF text**.
 * **Reason:** Allows committing reproducible benchmark reports and comparing runs via `scripts/compare_runs.py` without committing copyrighted report text.
 
+---
 
+### Decision 41: `dev` vs. `test` Split Discipline in `golden_questions.json`
 
+* **Context:** If we iteratively tune chunk sizes, `min_score`, retrieval ranking, or prompts against the entire golden set, we risk overfitting to those specific phrasing patterns and losing an unbiased estimate of generalization.
+* **Choice:** Add `split: Literal["dev", "test"] = "dev"` to `GoldenQuestion`, default `scripts/run_eval.py --split` to `"dev"`, and record the split in all reports.
+* **Reason:** Enforces the discipline: **tune on `dev`, run `test` only for final numbers**. While all 12 current seed questions are in `"dev"`, future expansion of the golden set can assign new questions to `"test"` without changing the runner or schema.
+
+---
+
+### Decision 42: Scaling Hit Cutoff $k$ by Detected Sources (`effective_k`), `text_hit_any` vs. `text_hit_all`, and `distinct_pages@6`
+
+* **Context:**
+  1. For multi-company comparison questions (`q09`), `retrieve()` fetches `top_k = 6` chunks **per detected company** (`6 x 2 = 12` chunks total) and passes all 12 to the LLM. Evaluating `hit@3` on only the first 3 merged chunks (which might all come from TCS if TCS has slightly higher cosine similarity) artificially penalizes retrieval even when Infosys chunks sit at positions 4–6 of the 12-chunk context window.
+  2. When a question has multiple `must_contain` entries (e.g. `q02` needs both revenue `267,021` and growth `4.6`), `text_hit_any@k` cannot tell whether *all* required facts were retrieved in the top $k$ union.
+  3. Multiple chunks from the same long PDF page can crowd the top 6 window, starving other pages.
+* **Choice:**
+  1. **Multi-source $k$ scaling (`effective_k`)**: When `len(detected_sources) > 1`, `hit@k` evaluates the top $k \times \text{len(detected\_sources)}$ chunks (`@1` $\to 2$, `@3` $\to 6$, `@6` $\to 12$), matching the actual context window proportion seen by the generator.
+  2. **`text_hit_any@k` and `text_hit_all@k` (`@1, @3, @6`)**: Report both whether *at least one* `must_contain` entry is in the top-$k$ union (`any`) and whether *every* `must_contain` entry is covered by the top-$k$ union (`all`).
+  3. **`distinct_pages@6`**: Report the average number of unique `(source, page)` pairs in the top 6 retrieved chunks as a crowding indicator (`6.0` = all distinct pages; `< 6.0` = multiple chunks from the same page).
+* **Reason:** Aligns retrieval metrics with what the generator actually receives and distinguishes partial vs. complete fact retrieval. On `baseline-v1`, scaling comparison $k$ improved `page_hit@3` from `0.6667` to `0.7778` (because `q09` has both TCS and Infosys expected pages within the top `3 x 2 = 6` chunks).
+
+---
+
+### Decision 43: LLM-as-a-Judge (`evaluation/judge.py`), Citation Precision, and Same-Family Bias Disclosure
+
+* **Context:** Deterministic `must_contain` checks verify whether expected figures appear in the answer, and `find_unsupported_numbers` checks whether answer digits appear in cited chunks, but neither can verify **semantic faithfulness** (whether the prose claim or metric label is actually supported by the cited passage) or **citation precision** (whether each individual `[n]` marker supports a claim that cites it, vs. riding along as an irrelevant extra citation).
+* **Choice:**
+  1. Implement `judge_answer(question, answer, cited_passages, provider) -> JudgeVerdict` in `evaluation/judge.py` using the **full text** of each cited chunk (never truncated 200-char excerpts).
+  2. Skip the judge when `not answer_result.grounded` (refusals and uncited answers need no faithfulness grading, saving API quota).
+  3. Compute `faithfulness_rate` (fraction of judged answers with `faithful=True`) and `citation_precision` (total citations with `supports=True` divided by total citations across judged answers).
+  4. Never commit `unsupported_claims` text or chunk text to `data/eval/results/`; write a gitignored `data/eval/runs/<ts>_<label>_judge_review.md` containing up to 10 random judged answers with full cited passages for human spot-checking.
+* **Known Limitations (Same-Family Bias & Passage-Level Granularity):**
+  - Because the judge uses the same model (`gemini-3.1-flash-lite-preview`) as the generator, it shares the generator's reading comprehension biases (**same-family / self-preference bias**).
+  - Our prompt instructs the judge: *"For each citation number, say whether that passage supports at least one claim in the answer that cites it."* Consequently, when a sentence makes three claims and cites `[5][6]`, if `[5]` supports all three claims and `[6]` supports two of the three claims (as happened in `q09`), `[6]` is marked `supports=True`.
+
+---
+
+### Decision 44: Synthetic Judge Calibration Set (`data/eval/judge_calibration.json`)
+
+* **Context:** Before trusting an LLM judge on real annual report runs—and without committing any copyrighted TCS/Infosys report text to git—we need a fast, reproducible unit benchmark verifying that the judge prompt and JSON parser correctly classify known faithfulness and citation-support edge cases.
+* **Choice:** Create `data/eval/judge_calibration.json` with 6 synthetic `ExampleCo` cases (`cal01`–`cal06`) and `scripts/run_judge_calibration.py` (6 Gemini calls):
+  - `cal01`: Exact figure and label supported $\to$ `faithful=True`, `[1]=True`.
+  - `cal02`: Wrong figure (`₹18,500 crore` vs `₹14,200 crore`) $\to$ `faithful=False`, `[1]=False`.
+  - `cal03`: Irrelevant passage (headcount passage cited for capital expenditure) $\to$ `faithful=False`, `[1]=False`.
+  - `cal04`: Two citations (`[1][2]`), where `[1]` supports revenue and `[2]` is irrelevant board-meeting text $\to$ `[1]=True`, `[2]=False`.
+  - `cal05`: Right number (`18.4%`) attached to the wrong metric label (*net profit margin* instead of *operating margin*) $\to$ `faithful=False`, `[1]=False`.
+  - `cal06`: Indian (`6,17,437`) vs. Western (`617,437`) comma formatting only $\to$ `faithful=True`, `[1]=True`.
+* **Reason:** Achieved `6/6` (`100%`) agreement on the live Gemini model while keeping the committed calibration file 100% synthetic and copyright-clean.
+
+---
+
+### Decision 45: Multi-Repeat Evaluation (`--repeats N`), Cache Bypass on Repeats $> 0$, and `flip_rate`
+
+* **Context:** Because Gemini 3.x runs at its recommended default `temperature = 1.0`, generation is stochastic. A single evaluation pass (`--repeats 1`) cannot tell whether a question is stably `CORRECT` or flipping between `CORRECT` and `WRONG` across calls.
+* **Choice:** Add `--repeats N` (default `1`) to `scripts/run_eval.py`:
+  1. Retrieval runs once per question (since local ONNX embeddings and Chroma search are deterministic).
+  2. Generation runs $N$ times per question: repeat index `0` uses the evaluation cache (`data/eval/cache/`), while repeats `1..N-1` **bypass the cache** to sample true live LLM variance.
+  3. Report `flip_rate` (fraction of questions whose deterministic `outcome` was not identical across all $N$ repeats) and `accuracy (min–max)` across repeats.
+* **Reason:** Quantifies generation stability directly while preserving zero-call cache reuse for the first pass.

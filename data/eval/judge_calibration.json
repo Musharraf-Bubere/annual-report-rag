@@ -1,0 +1,103 @@
+[
+  {
+    "id": "cal01",
+    "description": "Correct figure and supported passage -> faithful",
+    "question": "What was ExampleCo's total revenue in fiscal 2026?",
+    "answer": "ExampleCo's total revenue in fiscal 2026 was $4,250 million [1].",
+    "cited_passages": [
+      {
+        "n": 1,
+        "text": "In fiscal 2026, ExampleCo recorded total consolidated revenue of $4,250 million, up from $3,900 million in fiscal 2025."
+      }
+    ],
+    "expected_faithful": true,
+    "expected_citation_supports": {
+      "1": true
+    }
+  },
+  {
+    "id": "cal02",
+    "description": "Wrong figure vs the passage -> unfaithful",
+    "question": "What was ExampleCo's total revenue in fiscal 2026?",
+    "answer": "ExampleCo's total revenue in fiscal 2026 was $5,100 million [1].",
+    "cited_passages": [
+      {
+        "n": 1,
+        "text": "In fiscal 2026, ExampleCo recorded total consolidated revenue of $4,250 million, up from $3,900 million in fiscal 2025."
+      }
+    ],
+    "expected_faithful": false,
+    "expected_citation_supports": {
+      "1": false
+    }
+  },
+  {
+    "id": "cal03",
+    "description": "Cited passage is irrelevant to the claim -> citation does not support",
+    "question": "How many patents did ExampleCo file in fiscal 2026?",
+    "answer": "ExampleCo filed 120 patents in fiscal 2026 [1].",
+    "cited_passages": [
+      {
+        "n": 1,
+        "text": "ExampleCo's board of directors met six times during fiscal 2026 to review corporate governance policies."
+      }
+    ],
+    "expected_faithful": false,
+    "expected_citation_supports": {
+      "1": false
+    }
+  },
+  {
+    "id": "cal04",
+    "description": "Two citations, one supports and one irrelevant -> second does not support",
+    "question": "What was ExampleCo's research and development expense in fiscal 2026?",
+    "answer": "ExampleCo's research and development expense was $310 million in fiscal 2026 [1][2].",
+    "cited_passages": [
+      {
+        "n": 1,
+        "text": "Research and development expense for ExampleCo totaled $310 million in fiscal 2026."
+      },
+      {
+        "n": 2,
+        "text": "ExampleCo leases its corporate headquarters in Austin under a ten-year agreement."
+      }
+    ],
+    "expected_faithful": null,
+    "expected_citation_supports": {
+      "1": true,
+      "2": false
+    }
+  },
+  {
+    "id": "cal05",
+    "description": "Right number but wrong label (Operating margin vs Net margin) -> unfaithful",
+    "question": "What was ExampleCo's net margin in fiscal 2026?",
+    "answer": "Net margin was 25.0% [1].",
+    "cited_passages": [
+      {
+        "n": 1,
+        "text": "Operating margin was 25.0%."
+      }
+    ],
+    "expected_faithful": false,
+    "expected_citation_supports": {
+      "1": false
+    }
+  },
+  {
+    "id": "cal06",
+    "description": "Indian vs Western number format only (6,17,437 vs 617,437) -> faithful",
+    "question": "How many employees does ExampleCo have?",
+    "answer": "ExampleCo has 617,437 employees [1].",
+    "cited_passages": [
+      {
+        "n": 1,
+        "text": "ExampleCo had 6,17,437 employees at the end of fiscal 2026."
+      }
+    ],
+    "expected_faithful": true,
+    "expected_citation_supports": {
+      "1": true
+    }
+  }
+]

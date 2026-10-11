@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, model_validator
 from annual_report_rag.retrieval.store import ChromaStore
 
 QuestionType = Literal["fact", "comparison", "unanswerable", "adversarial"]
+SplitType = Literal["dev", "test"]
 
 
 class ExpectedPage(BaseModel):
@@ -32,6 +33,7 @@ class GoldenQuestion(BaseModel):
     must_not_contain: list[str] = Field(default_factory=list)
     notes: str = ""
     human_verified: bool = False
+    split: SplitType = "dev"
 
     @model_validator(mode="after")
     def validate_question_rules(self) -> "GoldenQuestion":

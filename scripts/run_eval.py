@@ -18,13 +18,31 @@ from annual_report_rag.retrieval.store import ChromaStore
 def parse_args() -> argparse.Namespace:
     """Parses command-line flags for scripts/run_eval.py."""
     parser = argparse.ArgumentParser(
-        description="Run the deterministic RAG evaluation harness."
+        description="Run the RAG evaluation harness."
     )
     parser.add_argument(
         "--label",
         type=str,
         default="eval",
-        help="Short label for the evaluation run (e.g. baseline-v0).",
+        help="Short label for the evaluation run (e.g. baseline-v1).",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        choices=["dev", "test", "all"],
+        default="dev",
+        help="Dataset split to evaluate: dev (default), test, or all.",
+    )
+    parser.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help="Number of generation repeats per question (default 1).",
+    )
+    parser.add_argument(
+        "--judge",
+        action="store_true",
+        help="Run the LLM faithfulness judge on grounded answers.",
     )
     parser.add_argument(
         "--retrieval-only",
@@ -47,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Bypass the evaluation answer cache and force fresh generation calls.",
+        help="Bypass the evaluation answer and judge caches.",
     )
     parser.add_argument(
         "--validate-only",
@@ -81,7 +99,7 @@ def run_cli(args: argparse.Namespace) -> int:
             q_slice = classify_expected_page_quality(q, store)
             pages_str = ", ".join(f"{ep.source}:p{ep.page}" for ep in q.expected_pages) or "none"
             print(
-                f"  - {q.id} [{q.type}] (answerable={q.answerable}, quality_slice={q_slice}): "
+                f"  - {q.id} [{q.type} | split={q.split}] (answerable={q.answerable}, quality_slice={q_slice}): "
                 f"expected_pages=[{pages_str}], must_contain={q.must_contain}"
             )
         if warn_msgs:
@@ -100,11 +118,16 @@ def run_cli(args: argparse.Namespace) -> int:
         only_type=args.only_type,
         limit=args.limit,
         use_cache=not args.no_cache,
+        split=args.split,
+        repeats=args.repeats,
+        use_judge=args.judge,
         store=store,
     )
 
     print(output.markdown_report)
     print(f"Saved full run detail (gitignored): {output.run_json_path}")
+    if output.judge_review_path is not None:
+        print(f"Saved judge review (gitignored):    {output.judge_review_path}")
     print(f"Saved metrics JSON (committed):     {output.metrics_json_path}")
     print(f"Saved markdown report (committed):  {output.markdown_path}")
 

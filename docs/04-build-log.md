@@ -453,5 +453,52 @@ Key diagnostic takeaways from `baseline-v0`:
    - **`q04` (`FALSE_REFUSAL`, `page_hit@6=True`, `text_hit@6=True`)**: Chunk `tcs-ar-26-p36-c1` (rank 6, `degraded`) contained `52,820`, but because degraded words in the table row label were stripped during ingestion (and Indian GAAP/Ind AS uses *"Profit for the year"* rather than *"net income"*), the model followed System Prompt Rule 5 (do not guess missing words on degraded passages) and conservatively refused.
    - **`q05` (`FALSE_REFUSAL`, `page_hit@6=True`, `text_hit@6=False`)**: Retrieved `tcs-ar-26` PDF page 58 at rank 5 (`p58-c1`), but the table chunk containing `19.8%` PAT margin (`p58-c0`) ranked outside the top 6. Rather than conflating operating margin (`25.0%`) with net profit margin, the generator returned `NOT_FOUND_MESSAGE`.
 
+---
 
+## Phase 4b: Faithfulness Judge, Synthetic Calibration, Repeats, Dev/Test Split, and Sharper Metrics
 
+### The problem this phase solves
+Phase 4a gave us deterministic retrieval and lexical/numeric outcome metrics (`baseline-v0`), but left four gaps:
+1. **Overfitting Risk Without a Split**: Tuning retrieval and prompts on the entire golden set without a `dev`/`test` split risks overfitting to the benchmark.
+2. **Comparison $k$ & Multi-Fact Coverage**: Multi-company comparisons (`q09`) retrieve `top_k = 6` chunks per company (`12` total), so `hit@k` should scale by the number of detected sources. We also need `text_hit_any@k` vs. `text_hit_all@k` (`@1, @3, @6`), a page crowding indicator (`distinct_pages@6`), and sample size `n` + `max` next to every latency percentile (since `p95` is not meaningful when $n < 20$).
+3. **Semantic Faithfulness & Citation Precision**: Deterministic checks (`must_contain` and `find_unsupported_numbers`) cannot tell if a cited passage actually supports the prose claim or if extra `[n]` citations are irrelevant ride-alongs.
+4. **LLM Nondeterminism at `temperature = 1.0`**: With Gemini 3.x running at its recommended default temperature, we need multi-repeat evaluation (`--repeats N`) to measure outcome stability (`flip_rate`).
+
+### What we built
+1. **Dev/Test Split (`evaluation/golden.py`, `data/eval/golden_questions.json`, `scripts/run_eval.py`)**:
+   - Added `split: Literal["dev", "test"] = "dev"` to `GoldenQuestion` and `--split dev|test|all` (default `dev`) to `run_eval.py`.
+2. **Sharper Retrieval & Latency Metrics (`evaluation/metrics.py`, `evaluation/reporting.py`)**:
+   - `effective_k(k, num_sources)` scales `k = k * num_sources` when `num_sources > 1`.
+   - Added `text_hit_any@1/@3/@6`, `text_hit_all@1/@3/@6`, `distinct_pages@6`, `flip_rate()`, and latency `(n=...)`, `max`, plus a statistical note whenever $n < 20$.
+3. **LLM-as-a-Judge & Synthetic Calibration (`evaluation/judge.py`, `data/eval/judge_calibration.json`, `scripts/run_judge_calibration.py`)**:
+   - Implemented `judge_answer(question, answer, cited_passages, provider) -> JudgeVerdict` using full cited chunk texts, cached in `data/eval/cache/` (`judge_<sha256>.json`).
+   - Built a 6-case synthetic `ExampleCo` calibration suite (`cal01`–`cal06`) testing exact match, wrong figure, irrelevant citation, partial citation support (`[1]` valid, `[2]` irrelevant), wrong metric label (*operating* vs *net* margin), and Indian vs. Western comma formatting (`6,17,437` vs `617,437`).
+   - Added gitignored `data/eval/runs/<ts>_<label>_judge_review.md` for human spot-checking of up to 10 random judged answers with full cited passages, while keeping committed `data/eval/results/` 100% free of chunk text and `unsupported_claims` text.
+4. **Multi-Repeat Runner (`--repeats N` in `evaluation/runner.py`, `scripts/run_eval.py`)**:
+   - Runs retrieval once per question and generation $N$ times (repeat `0` uses cache; repeats `1..N-1` bypass cache), reporting `flip_rate` and `accuracy (min–max)`.
+
+### Real Verification Results (25 Total Gemini Calls)
+
+#### 1. Synthetic Judge Calibration (`uv run python scripts/run_judge_calibration.py` — 6 calls)
+- Achieved **`6/6` (`100.00%`) agreement** with expected verdicts across all 6 synthetic `ExampleCo` cases (`parse_ok=True` on all 6):
+  - `cal01` (supported figure): `faithful=True`, `[1]=True` (PASS)
+  - `cal02` (wrong figure `18,500` vs `14,200`): `faithful=False`, `[1]=False` (PASS)
+  - `cal03` (irrelevant headcount passage cited for capex): `faithful=False`, `[1]=False` (PASS)
+  - `cal04` (two citations, `[1]` supports, `[2]` irrelevant): `faithful=False`, `[1]=True, [2]=False` (PASS)
+  - `cal05` (right number `18.4%`, wrong label *net* vs *operating* margin): `faithful=False`, `[1]=False` (PASS)
+  - `cal06` (Indian `6,17,437` vs Western `617,437` format): `faithful=True`, `[1]=True` (PASS)
+
+#### 2. `baseline-v1` with Judge (`uv run python scripts/run_eval.py --label baseline-v1 --judge` — 0 answer calls [cached] + 7 judge calls)
+- **Retrieval ($n=9$ answerable)**:
+  - `page_hit@1 = 0.4444`, `page_hit@3 = 0.7778` (up from `0.6667` in `baseline-v0` because `q09` comparison `hit@3` now checks the top `3 x 2 = 6` merged chunks, which include both TCS and Infosys expected pages), `page_hit@6 = 1.0000`, `MRR = 0.6519`.
+  - `text_hit_any@1/@3/@6 = 0.6667 / 0.6667 / 0.7778` and `text_hit_all@1/@3/@6 = 0.6667 / 0.6667 / 0.7778`.
+  - `distinct_pages@6 = 5.22` (on average 5.22 unique `(source, page)` pairs among the top 6 chunks).
+- **Faithfulness & Citation Precision ($n=7$ grounded answers judged: `q01, q02, q03, q06, q07, q08, q09`)**:
+  - `faithfulness_rate = 1.0000` (`7/7`), `citation_precision = 1.0000` (`12/12` citations supported), `judge_error = 0`.
+  - **Manual spot-check of `judge_review.md`**: Across `q01, q02, q03, q06, q07, q08`, every cited passage literally contains the exact figure claimed (`q03` is `WRONG` on completeness because it cited `11,000%` of paid-up value from p36 without the per-share `₹110`, but `11,000%` is 100% faithful to p36). On **`q09`**, the sentence *"In contrast, Infosys reported a consolidated revenue growth of 9.6% (reaching ₹1,78,650 crore) and a constant currency revenue growth of 3.1% [5][6]"* cites `[5]` (p77, which contains all three figures: `9.6%`, `₹1,78,650 crore`, and `3.1%`) and `[6]` (p33, which contains `9.6%` and `₹1,78,650 crore`, but **not** `3.1%`). Because the judge prompt asks whether each cited passage *"supports at least one claim in the answer that cites it"*, `[6]` legitimately supports two of the three claims in that sentence and was marked `supports=True`.
+
+#### 3. `baseline-v1-repeats` (`uv run python scripts/run_eval.py --label baseline-v1-repeats --repeats 3 --limit 6` — 0 calls for repeat 0 + 12 calls for repeats 1–2)
+- Evaluated `q01`–`q06` across 3 repeats ($6 \times 3 = 18$ generation calls):
+  - **`flip_rate = 0.0000`**: Every single question produced the exact same deterministic outcome across all 3 repeats (`q01` `CORRECT` x3, `q02` `CORRECT` x3, `q03` `WRONG` x3, `q04` `FALSE_REFUSAL` x3, `q05` `FALSE_REFUSAL` x3, `q06` `CORRECT` x3).
+  - **`accuracy = 0.5000 (0.5000–0.5000)`** across repeats on `q01`–`q06`.
+  - **Latency ($n=18$)**: `generate_ms p50 = 1203.94 ms`, `p95 = 21973.48 ms`, `max = 46245.92 ms` (one call encountered a per-minute 429 rate-limit sleep of ~44s before succeeding, illustrating why reporting `max` and `(n=18)` alongside `p95` is essential).

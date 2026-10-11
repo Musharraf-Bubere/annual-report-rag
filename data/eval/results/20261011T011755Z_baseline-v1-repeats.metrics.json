@@ -1,0 +1,2554 @@
+{
+  "label": "baseline-v1-repeats",
+  "timestamp": "20261011T011755Z",
+  "retrieval_only": false,
+  "split": "dev",
+  "repeats": 3,
+  "status": "completed",
+  "store_fingerprint": "b272e6eaa2df4543919fc0b31bffb605e04fe638e2ddd377ff6e164a7625d63c",
+  "num_questions": 6,
+  "all_human_verified": false,
+  "retrieval": {
+    "answerable_count": 6,
+    "page_hit_at_1": 0.5,
+    "page_hit_at_3": 0.6667,
+    "page_hit_at_6": 1.0,
+    "mrr": 0.6444,
+    "text_hit_at_6": 0.6667,
+    "text_hit_any_at_1": 0.5,
+    "text_hit_any_at_3": 0.5,
+    "text_hit_any_at_6": 0.6667,
+    "text_hit_all_at_1": 0.5,
+    "text_hit_all_at_3": 0.5,
+    "text_hit_all_at_6": 0.6667,
+    "distinct_pages_at_6": 4.83
+  },
+  "answers": {
+    "outcome_counts": {
+      "CORRECT": 3,
+      "WRONG": 1,
+      "FALSE_REFUSAL": 2,
+      "CORRECT_REFUSAL": 0,
+      "ANSWERED_ANYWAY": 0
+    },
+    "grounded_rate": 0.6667,
+    "questions_with_unsupported_numbers": 0,
+    "unsupported_number_question_ids": []
+  },
+  "faithfulness": {
+    "enabled": false
+  },
+  "repeats_summary": {
+    "repeats": 3,
+    "flip_rate": 0.0,
+    "flipped_question_ids": [],
+    "outcomes_by_question": {
+      "q01": [
+        "CORRECT",
+        "CORRECT",
+        "CORRECT"
+      ],
+      "q02": [
+        "CORRECT",
+        "CORRECT",
+        "CORRECT"
+      ],
+      "q03": [
+        "WRONG",
+        "WRONG",
+        "WRONG"
+      ],
+      "q04": [
+        "FALSE_REFUSAL",
+        "FALSE_REFUSAL",
+        "FALSE_REFUSAL"
+      ],
+      "q05": [
+        "FALSE_REFUSAL",
+        "FALSE_REFUSAL",
+        "FALSE_REFUSAL"
+      ],
+      "q06": [
+        "CORRECT",
+        "CORRECT",
+        "CORRECT"
+      ]
+    },
+    "accuracy_mean": 0.5,
+    "accuracy_min": 0.5,
+    "accuracy_max": 0.5,
+    "answerable_accuracy_mean": 0.5,
+    "answerable_accuracy_min": 0.5,
+    "answerable_accuracy_max": 0.5
+  },
+  "performance": {
+    "retrieve_n": 18,
+    "retrieve_p50_ms": 32.23,
+    "retrieve_p95_ms": 44.74,
+    "retrieve_max_ms": 48.61,
+    "generate_n": 18,
+    "generate_p50_ms": 1203.94,
+    "generate_p95_ms": 21973.48,
+    "generate_max_ms": 46245.92,
+    "total_n": 18,
+    "total_p50_ms": 1240.58,
+    "total_p95_ms": 22015.98,
+    "total_max_ms": 46278.35,
+    "avg_input_tokens": 1872.8,
+    "avg_output_tokens": 35.6,
+    "avg_cost_per_query_usd": null
+  },
+  "slices": {
+    "by_type": {
+      "fact": {
+        "count": 6,
+        "page_hit_at_6": 1.0,
+        "text_hit_at_6": 0.6667,
+        "text_hit_any_at_6": 0.6667,
+        "text_hit_all_at_6": 0.6667,
+        "pass_count": 3
+      }
+    },
+    "by_expected_page_quality": {
+      "all_clean": {
+        "count": 2,
+        "page_hit_at_6": 1.0,
+        "mrr": 1.0,
+        "text_hit_at_6": 1.0,
+        "text_hit_any_at_6": 1.0,
+        "text_hit_all_at_6": 1.0,
+        "correct_count": 2
+      },
+      "all_degraded": {
+        "count": 4,
+        "page_hit_at_6": 1.0,
+        "mrr": 0.4667,
+        "text_hit_at_6": 0.5,
+        "text_hit_any_at_6": 0.5,
+        "text_hit_all_at_6": 0.5,
+        "correct_count": 1
+      },
+      "mixed": {
+        "count": 0,
+        "page_hit_at_6": 0.0,
+        "mrr": 0.0,
+        "text_hit_at_6": 0.0,
+        "text_hit_any_at_6": 0.0,
+        "text_hit_all_at_6": 0.0,
+        "correct_count": null
+      }
+    }
+  },
+  "failed_questions": [
+    {
+      "id": "q03",
+      "question": "What dividend did TCS declare for fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.5,
+      "text_hit_at_6": false,
+      "outcome": "WRONG",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 31.87,
+      "generate_ms": 903.89,
+      "total_ms": 935.97,
+      "input_tokens": 1886,
+      "output_tokens": 34,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p33-c6",
+          "source": "tcs-ar-26",
+          "page": 33,
+          "score": 0.7891,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7784,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7487,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.745,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7343,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p322-c1",
+          "source": "tcs-ar-26",
+          "page": 322,
+          "score": 0.7284,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 2,
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "text_quality": "degraded"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 6,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q04",
+      "question": "What was TCS's net income in fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.1667,
+      "text_hit_at_6": true,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 27.57,
+      "generate_ms": 1060.68,
+      "total_ms": 1088.32,
+      "input_tokens": 2051,
+      "output_tokens": 10,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7631,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7582,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7556,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7523,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7313,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7284,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 4,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q05",
+      "question": "What is TCS's net profit margin?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.2,
+      "text_hit_at_6": false,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 25.16,
+      "generate_ms": 875.42,
+      "total_ms": 900.66,
+      "input_tokens": 2009,
+      "output_tokens": 10,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7714,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c3",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7371,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.732,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.729,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p58-c4",
+          "source": "tcs-ar-26",
+          "page": 58,
+          "score": 0.7089,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7063,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 3,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    }
+  ],
+  "questions": [
+    {
+      "id": "q01",
+      "question": "How many employees does TCS have?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_clean",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 48.61,
+      "generate_ms": 1569.76,
+      "total_ms": 1618.67,
+      "input_tokens": 1829,
+      "output_tokens": 44,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p25-c0",
+          "source": "tcs-ar-26",
+          "page": 25,
+          "score": 0.7278,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p20-c3",
+          "source": "tcs-ar-26",
+          "page": 20,
+          "score": 0.7243,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p108-c0",
+          "source": "tcs-ar-26",
+          "page": 108,
+          "score": 0.7227,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p55-c3",
+          "source": "tcs-ar-26",
+          "page": 55,
+          "score": 0.7185,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p132-c3",
+          "source": "tcs-ar-26",
+          "page": 132,
+          "score": 0.6934,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p55-c1",
+          "source": "tcs-ar-26",
+          "page": 55,
+          "score": 0.6919,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 3,
+          "chunk_id": "tcs-ar-26-p108-c0",
+          "source": "tcs-ar-26",
+          "page": 108,
+          "text_quality": "clean"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 5,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q02",
+      "question": "What was TCS's consolidated revenue in fiscal 2026 and its growth?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 44.06,
+      "generate_ms": 17690.11,
+      "total_ms": 17734.38,
+      "input_tokens": 1866,
+      "output_tokens": 66,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7804,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p58-c3",
+          "source": "tcs-ar-26",
+          "page": 58,
+          "score": 0.7642,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7498,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7342,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7332,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "score": 0.7325,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 1,
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "text_quality": "degraded"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 5,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q03",
+      "question": "What dividend did TCS declare for fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.5,
+      "text_hit_at_6": false,
+      "outcome": "WRONG",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 31.87,
+      "generate_ms": 903.89,
+      "total_ms": 935.97,
+      "input_tokens": 1886,
+      "output_tokens": 34,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p33-c6",
+          "source": "tcs-ar-26",
+          "page": 33,
+          "score": 0.7891,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7784,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7487,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.745,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7343,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p322-c1",
+          "source": "tcs-ar-26",
+          "page": 322,
+          "score": 0.7284,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 2,
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "text_quality": "degraded"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 6,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q04",
+      "question": "What was TCS's net income in fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.1667,
+      "text_hit_at_6": true,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 27.57,
+      "generate_ms": 1060.68,
+      "total_ms": 1088.32,
+      "input_tokens": 2051,
+      "output_tokens": 10,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7631,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7582,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7556,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7523,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7313,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7284,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 4,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q05",
+      "question": "What is TCS's net profit margin?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.2,
+      "text_hit_at_6": false,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 25.16,
+      "generate_ms": 875.42,
+      "total_ms": 900.66,
+      "input_tokens": 2009,
+      "output_tokens": 10,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7714,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c3",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7371,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.732,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.729,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p58-c4",
+          "source": "tcs-ar-26",
+          "page": 58,
+          "score": 0.7089,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7063,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 3,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q06",
+      "question": "What is TCS's consolidated contingent liability for tax demands from direct tax authorities?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_clean",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 43.79,
+      "generate_ms": 976.8,
+      "total_ms": 1020.85,
+      "input_tokens": 1596,
+      "output_tokens": 54,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "score": 0.7693,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p305-c2",
+          "source": "tcs-ar-26",
+          "page": 305,
+          "score": 0.7448,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p176-c0",
+          "source": "tcs-ar-26",
+          "page": 176,
+          "score": 0.7235,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p223-c2",
+          "source": "tcs-ar-26",
+          "page": 223,
+          "score": 0.7174,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p308-c0",
+          "source": "tcs-ar-26",
+          "page": 308,
+          "score": 0.7171,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p74-c5",
+          "source": "tcs-ar-26",
+          "page": 74,
+          "score": 0.7063,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 1,
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "text_quality": "clean"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 6,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    }
+  ],
+  "all_repeat_questions": [
+    {
+      "id": "q01",
+      "question": "How many employees does TCS have?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_clean",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 48.61,
+      "generate_ms": 1569.76,
+      "total_ms": 1618.67,
+      "input_tokens": 1829,
+      "output_tokens": 44,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p25-c0",
+          "source": "tcs-ar-26",
+          "page": 25,
+          "score": 0.7278,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p20-c3",
+          "source": "tcs-ar-26",
+          "page": 20,
+          "score": 0.7243,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p108-c0",
+          "source": "tcs-ar-26",
+          "page": 108,
+          "score": 0.7227,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p55-c3",
+          "source": "tcs-ar-26",
+          "page": 55,
+          "score": 0.7185,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p132-c3",
+          "source": "tcs-ar-26",
+          "page": 132,
+          "score": 0.6934,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p55-c1",
+          "source": "tcs-ar-26",
+          "page": 55,
+          "score": 0.6919,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 3,
+          "chunk_id": "tcs-ar-26-p108-c0",
+          "source": "tcs-ar-26",
+          "page": 108,
+          "text_quality": "clean"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 5,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q02",
+      "question": "What was TCS's consolidated revenue in fiscal 2026 and its growth?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 44.06,
+      "generate_ms": 17690.11,
+      "total_ms": 17734.38,
+      "input_tokens": 1866,
+      "output_tokens": 66,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7804,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p58-c3",
+          "source": "tcs-ar-26",
+          "page": 58,
+          "score": 0.7642,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7498,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7342,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7332,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "score": 0.7325,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 1,
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "text_quality": "degraded"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 5,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q03",
+      "question": "What dividend did TCS declare for fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.5,
+      "text_hit_at_6": false,
+      "outcome": "WRONG",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 31.87,
+      "generate_ms": 903.89,
+      "total_ms": 935.97,
+      "input_tokens": 1886,
+      "output_tokens": 34,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p33-c6",
+          "source": "tcs-ar-26",
+          "page": 33,
+          "score": 0.7891,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7784,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7487,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.745,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7343,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p322-c1",
+          "source": "tcs-ar-26",
+          "page": 322,
+          "score": 0.7284,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 2,
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "text_quality": "degraded"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 6,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q04",
+      "question": "What was TCS's net income in fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.1667,
+      "text_hit_at_6": true,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 27.57,
+      "generate_ms": 1060.68,
+      "total_ms": 1088.32,
+      "input_tokens": 2051,
+      "output_tokens": 10,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7631,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7582,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7556,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7523,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7313,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7284,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 4,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q05",
+      "question": "What is TCS's net profit margin?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.2,
+      "text_hit_at_6": false,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 25.16,
+      "generate_ms": 875.42,
+      "total_ms": 900.66,
+      "input_tokens": 2009,
+      "output_tokens": 10,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7714,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c3",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7371,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.732,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.729,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p58-c4",
+          "source": "tcs-ar-26",
+          "page": 58,
+          "score": 0.7089,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7063,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 3,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q06",
+      "question": "What is TCS's consolidated contingent liability for tax demands from direct tax authorities?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_clean",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 43.79,
+      "generate_ms": 976.8,
+      "total_ms": 1020.85,
+      "input_tokens": 1596,
+      "output_tokens": 54,
+      "from_cache": true,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "score": 0.7693,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p305-c2",
+          "source": "tcs-ar-26",
+          "page": 305,
+          "score": 0.7448,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p176-c0",
+          "source": "tcs-ar-26",
+          "page": 176,
+          "score": 0.7235,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p223-c2",
+          "source": "tcs-ar-26",
+          "page": 223,
+          "score": 0.7174,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p308-c0",
+          "source": "tcs-ar-26",
+          "page": 308,
+          "score": 0.7171,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p74-c5",
+          "source": "tcs-ar-26",
+          "page": 74,
+          "score": 0.7063,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 1,
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "text_quality": "clean"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 0,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 6,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q01",
+      "question": "How many employees does TCS have?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_clean",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 30.79,
+      "generate_ms": 1767.42,
+      "total_ms": 1798.46,
+      "input_tokens": 1829,
+      "output_tokens": 44,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p25-c0",
+          "source": "tcs-ar-26",
+          "page": 25,
+          "score": 0.7278,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p20-c3",
+          "source": "tcs-ar-26",
+          "page": 20,
+          "score": 0.7243,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p108-c0",
+          "source": "tcs-ar-26",
+          "page": 108,
+          "score": 0.7227,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p55-c3",
+          "source": "tcs-ar-26",
+          "page": 55,
+          "score": 0.7185,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p132-c3",
+          "source": "tcs-ar-26",
+          "page": 132,
+          "score": 0.6934,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p55-c1",
+          "source": "tcs-ar-26",
+          "page": 55,
+          "score": 0.6919,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 3,
+          "chunk_id": "tcs-ar-26-p108-c0",
+          "source": "tcs-ar-26",
+          "page": 108,
+          "text_quality": "clean"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 1,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 5,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q02",
+      "question": "What was TCS's consolidated revenue in fiscal 2026 and its growth?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 35.82,
+      "generate_ms": 1541.43,
+      "total_ms": 1577.43,
+      "input_tokens": 1866,
+      "output_tokens": 66,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7804,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p58-c3",
+          "source": "tcs-ar-26",
+          "page": 58,
+          "score": 0.7642,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7498,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7342,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7332,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "score": 0.7325,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 1,
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "text_quality": "degraded"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 1,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 5,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q03",
+      "question": "What dividend did TCS declare for fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.5,
+      "text_hit_at_6": false,
+      "outcome": "WRONG",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 41.01,
+      "generate_ms": 1014.49,
+      "total_ms": 1055.66,
+      "input_tokens": 1886,
+      "output_tokens": 30,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p33-c6",
+          "source": "tcs-ar-26",
+          "page": 33,
+          "score": 0.7891,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7784,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7487,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.745,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7343,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p322-c1",
+          "source": "tcs-ar-26",
+          "page": 322,
+          "score": 0.7284,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 2,
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "text_quality": "degraded"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 1,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 6,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q04",
+      "question": "What was TCS's net income in fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.1667,
+      "text_hit_at_6": true,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 32.38,
+      "generate_ms": 46245.92,
+      "total_ms": 46278.35,
+      "input_tokens": 2051,
+      "output_tokens": 10,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7631,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7582,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7556,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7523,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7313,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7284,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 1,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 4,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q05",
+      "question": "What is TCS's net profit margin?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.2,
+      "text_hit_at_6": false,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 30.91,
+      "generate_ms": 1190.39,
+      "total_ms": 1221.35,
+      "input_tokens": 2009,
+      "output_tokens": 10,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7714,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c3",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7371,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.732,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.729,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p58-c4",
+          "source": "tcs-ar-26",
+          "page": 58,
+          "score": 0.7089,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7063,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 1,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 3,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q06",
+      "question": "What is TCS's consolidated contingent liability for tax demands from direct tax authorities?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_clean",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 42.14,
+      "generate_ms": 1217.49,
+      "total_ms": 1259.81,
+      "input_tokens": 1596,
+      "output_tokens": 56,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "score": 0.7693,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p305-c2",
+          "source": "tcs-ar-26",
+          "page": 305,
+          "score": 0.7448,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p176-c0",
+          "source": "tcs-ar-26",
+          "page": 176,
+          "score": 0.7235,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p223-c2",
+          "source": "tcs-ar-26",
+          "page": 223,
+          "score": 0.7174,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p308-c0",
+          "source": "tcs-ar-26",
+          "page": 308,
+          "score": 0.7171,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p74-c5",
+          "source": "tcs-ar-26",
+          "page": 74,
+          "score": 0.7063,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 1,
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "text_quality": "clean"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 1,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 6,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q01",
+      "question": "How many employees does TCS have?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_clean",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 32.09,
+      "generate_ms": 1068.99,
+      "total_ms": 1101.24,
+      "input_tokens": 1829,
+      "output_tokens": 30,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p25-c0",
+          "source": "tcs-ar-26",
+          "page": 25,
+          "score": 0.7278,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p20-c3",
+          "source": "tcs-ar-26",
+          "page": 20,
+          "score": 0.7243,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p108-c0",
+          "source": "tcs-ar-26",
+          "page": 108,
+          "score": 0.7227,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p55-c3",
+          "source": "tcs-ar-26",
+          "page": 55,
+          "score": 0.7185,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p132-c3",
+          "source": "tcs-ar-26",
+          "page": 132,
+          "score": 0.6934,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p55-c1",
+          "source": "tcs-ar-26",
+          "page": 55,
+          "score": 0.6919,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 3,
+          "chunk_id": "tcs-ar-26-p108-c0",
+          "source": "tcs-ar-26",
+          "page": 108,
+          "text_quality": "clean"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 2,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 5,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q02",
+      "question": "What was TCS's consolidated revenue in fiscal 2026 and its growth?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 34.08,
+      "generate_ms": 1237.03,
+      "total_ms": 1271.26,
+      "input_tokens": 1866,
+      "output_tokens": 66,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7804,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p58-c3",
+          "source": "tcs-ar-26",
+          "page": 58,
+          "score": 0.7642,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7498,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7342,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7332,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "score": 0.7325,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 1,
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "text_quality": "degraded"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 2,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 5,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q03",
+      "question": "What dividend did TCS declare for fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.5,
+      "text_hit_at_6": false,
+      "outcome": "WRONG",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 31.32,
+      "generate_ms": 1188.19,
+      "total_ms": 1219.67,
+      "input_tokens": 1886,
+      "output_tokens": 34,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p33-c6",
+          "source": "tcs-ar-26",
+          "page": 33,
+          "score": 0.7891,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7784,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7487,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.745,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7343,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p322-c1",
+          "source": "tcs-ar-26",
+          "page": 322,
+          "score": 0.7284,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 2,
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "text_quality": "degraded"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 2,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 6,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q04",
+      "question": "What was TCS's net income in fiscal 2026?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.1667,
+      "text_hit_at_6": true,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 28.96,
+      "generate_ms": 1234.32,
+      "total_ms": 1263.33,
+      "input_tokens": 2051,
+      "output_tokens": 10,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p46-c2",
+          "source": "tcs-ar-26",
+          "page": 46,
+          "score": 0.7631,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7582,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p4-c0",
+          "source": "tcs-ar-26",
+          "page": 4,
+          "score": 0.7556,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7523,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7313,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7284,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 2,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 4,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q05",
+      "question": "What is TCS's net profit margin?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_degraded",
+      "page_hit_at_1": false,
+      "page_hit_at_3": false,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 0.2,
+      "text_hit_at_6": false,
+      "outcome": "FALSE_REFUSAL",
+      "grounded": false,
+      "reason": "not_found",
+      "invalid_citations": 0,
+      "unsupported_numbers": [],
+      "retrieve_ms": 29.74,
+      "generate_ms": 1190.21,
+      "total_ms": 1220.0,
+      "input_tokens": 2009,
+      "output_tokens": 10,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p24-c2",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7714,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c3",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.7371,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c1",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.732,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p24-c5",
+          "source": "tcs-ar-26",
+          "page": 24,
+          "score": 0.729,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p58-c4",
+          "source": "tcs-ar-26",
+          "page": 58,
+          "score": 0.7089,
+          "text_quality": "degraded"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p36-c1",
+          "source": "tcs-ar-26",
+          "page": 36,
+          "score": 0.7063,
+          "text_quality": "degraded"
+        }
+      ],
+      "citations": [],
+      "split": "dev",
+      "repeat_index": 2,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": false,
+      "text_hit_any_at_3": false,
+      "text_hit_any_at_6": false,
+      "text_hit_all_at_1": false,
+      "text_hit_all_at_3": false,
+      "text_hit_all_at_6": false,
+      "distinct_pages_at_6": 3,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    },
+    {
+      "id": "q06",
+      "question": "What is TCS's consolidated contingent liability for tax demands from direct tax authorities?",
+      "type": "fact",
+      "answerable": true,
+      "human_verified": false,
+      "expected_quality_slice": "all_clean",
+      "page_hit_at_1": true,
+      "page_hit_at_3": true,
+      "page_hit_at_6": true,
+      "reciprocal_rank": 1.0,
+      "text_hit_at_6": true,
+      "outcome": "CORRECT",
+      "grounded": true,
+      "reason": "ok",
+      "invalid_citations": 0,
+      "unsupported_numbers": [
+        "31, 2025"
+      ],
+      "retrieve_ms": 34.59,
+      "generate_ms": 1226.23,
+      "total_ms": 1260.98,
+      "input_tokens": 1596,
+      "output_tokens": 56,
+      "from_cache": false,
+      "retrieved_top6": [
+        {
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "score": 0.7693,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p305-c2",
+          "source": "tcs-ar-26",
+          "page": 305,
+          "score": 0.7448,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p176-c0",
+          "source": "tcs-ar-26",
+          "page": 176,
+          "score": 0.7235,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p223-c2",
+          "source": "tcs-ar-26",
+          "page": 223,
+          "score": 0.7174,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p308-c0",
+          "source": "tcs-ar-26",
+          "page": 308,
+          "score": 0.7171,
+          "text_quality": "clean"
+        },
+        {
+          "chunk_id": "tcs-ar-26-p74-c5",
+          "source": "tcs-ar-26",
+          "page": 74,
+          "score": 0.7063,
+          "text_quality": "clean"
+        }
+      ],
+      "citations": [
+        {
+          "n": 1,
+          "chunk_id": "tcs-ar-26-p224-c0",
+          "source": "tcs-ar-26",
+          "page": 224,
+          "text_quality": "clean"
+        }
+      ],
+      "split": "dev",
+      "repeat_index": 2,
+      "detected_sources_count": 1,
+      "text_hit_any_at_1": true,
+      "text_hit_any_at_3": true,
+      "text_hit_any_at_6": true,
+      "text_hit_all_at_1": true,
+      "text_hit_all_at_3": true,
+      "text_hit_all_at_6": true,
+      "distinct_pages_at_6": 6,
+      "judge_faithful": null,
+      "judge_parse_ok": null,
+      "supporting_citations_count": 0,
+      "evaluated_citations_count": 0,
+      "non_supporting_citations": []
+    }
+  ]
+}
