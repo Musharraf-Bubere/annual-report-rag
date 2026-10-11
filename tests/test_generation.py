@@ -137,6 +137,50 @@ def test_find_unsupported_numbers() -> None:
     ans_bad = "Revenue was ₹2,67,021 crore and net profit was ₹999,000 crore (12.5%) [1]."
     assert find_unsupported_numbers(ans_bad, cited) == ["999,000", "12.5"]
 
+    # Fiscal-year forms "2025-26" and "FY26" support year "2026" without flagging it
+    cited_fy_range = [
+        RetrievedChunk(
+            chunk_id="c_fy1",
+            text="Regions 2025-26 North America 56.1% Europe 32.1%",
+            source="infosys-ar-26",
+            page=10,
+            score=0.9,
+            extraction_method="default",
+            text_quality="clean",
+        )
+    ]
+    assert (
+        find_unsupported_numbers(
+            "North America contributes the most in fiscal 2026, with a share of 56.1% [1].",
+            cited_fy_range,
+        )
+        == []
+    )
+
+    cited_fy_short = [
+        RetrievedChunk(
+            chunk_id="c_fy2",
+            text="In FY26, North America share was 56.1%.",
+            source="infosys-ar-26",
+            page=10,
+            score=0.9,
+            extraction_method="default",
+            text_quality="clean",
+        )
+    ]
+    assert (
+        find_unsupported_numbers(
+            "In 2026, North America share was 56.1% [1].",
+            cited_fy_short,
+        )
+        == []
+    )
+    # Ungrounded year (2030) is still flagged
+    assert find_unsupported_numbers(
+        "By 2030, North America share will be 56.1% [1].",
+        cited_fy_short,
+    ) == ["2030"]
+
 
 def test_answerer_pipeline_cases(tmp_path: Path) -> None:
     """Verifies answer_question for grounded, not_found, invalid citation, and no_context."""

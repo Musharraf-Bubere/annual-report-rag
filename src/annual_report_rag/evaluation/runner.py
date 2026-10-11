@@ -39,6 +39,7 @@ from annual_report_rag.generation.answerer import (
     Timings,
     answer_question,
 )
+from annual_report_rag.generation.checks import find_unsupported_numbers
 from annual_report_rag.generation.prompts import SYSTEM_PROMPT
 from annual_report_rag.providers.base import (
     DailyQuotaExceeded,
@@ -120,15 +121,28 @@ def _serialize_answer_result(res: AnswerResult) -> dict[str, Any]:
 
 
 def _deserialize_answer_result(data: dict[str, Any]) -> AnswerResult:
-    """Reconstructs an AnswerResult from a cached JSON dictionary."""
+    """Reconstructs an AnswerResult from a cached JSON dictionary, recomputing unsupported_numbers with the current checker."""
+    answer = str(data["answer"])
+    grounded = bool(data["grounded"])
+    citations = [Citation(**c) for c in data.get("citations", [])]
+    retrieved = [RetrievedChunk(**r) for r in data.get("retrieved", [])]
+    if grounded and citations and retrieved:
+        chunk_by_id = {c.chunk_id: c for c in retrieved}
+        cited_chunks = [
+            chunk_by_id[c.chunk_id] for c in citations if c.chunk_id in chunk_by_id
+        ]
+        unsupported_numbers = find_unsupported_numbers(answer, cited_chunks)
+    else:
+        unsupported_numbers = []
+
     return AnswerResult(
-        answer=str(data["answer"]),
-        grounded=bool(data["grounded"]),
-        citations=[Citation(**c) for c in data.get("citations", [])],
-        retrieved=[RetrievedChunk(**r) for r in data.get("retrieved", [])],
+        answer=answer,
+        grounded=grounded,
+        citations=citations,
+        retrieved=retrieved,
         detected_sources=list(data.get("detected_sources", [])),
         invalid_citations=int(data.get("invalid_citations", 0)),
-        unsupported_numbers=list(data.get("unsupported_numbers", [])),
+        unsupported_numbers=unsupported_numbers,
         timings=Timings(**data["timings"]),
         model=str(data.get("model", "")),
         input_tokens=data.get("input_tokens"),
@@ -811,3 +825,232 @@ def run_eval(
         markdown_path=markdown_path,
         judge_review_path=judge_review_path,
     )
+
+
+def _find_source_run_json(runs_dir: Path, source_run_label: str) -> Path:
+    """Locates the latest gitignored run JSON in runs_dir matching source_run_label."""
+    direct = Path(source_run_label)
+    if direct.is_file():
+        return direct
+
+    safe_src = "".join(c if c.isalnum() or c in "-_" else "-" for c in source_run_label)
+    matches = sorted(runs_dir.glob(f"*_{safe_src}.json"))
+    if matches:
+        return matches[-1]
+
+    by_summary_label: list[Path] = []
+    for candidate in sorted(runs_dir.glob("*.json")):
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if payload.get("summary", {}).get("label") == source_run_label:
+            by_summary_label.append(candidate)
+
+    if by_summary_label:
+        return by_summary_label[-1]
+
+    raise FileNotFoundError(
+        f"No cached run JSON found in '{runs_dir}' for label '{source_run_label}'."
+    )
+
+
+def rescore_run(
+    golden: Sequence[GoldenQuestion],
+    settings: Settings,
+    source_run_label: str,
+    label: str = "baseline-v2",
+    store: ChromaStore | None = None,
+    eval_dir: Path | str | None = None,
+) -> EvalRunOutput:
+    """Rescores cached answers and retrieved chunks from a prior run using the current scorer, with zero API or judge calls."""
+    base_eval_dir = (
+        Path(eval_dir) if eval_dir is not None else Path(settings.storage.eval_data_dir)
+    )
+    runs_dir = base_eval_dir / "runs"
+    results_dir = base_eval_dir / "results"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    source_path = _find_source_run_json(runs_dir, source_run_label)
+    raw_run = json.loads(source_path.read_text(encoding="utf-8"))
+    src_summary: dict[str, Any] = raw_run["summary"]
+    src_details: list[dict[str, Any]] = raw_run["details"]
+
+    golden_by_id = {q.id: q for q in golden}
+    retrieval_only = bool(src_summary.get("retrieval_only", False))
+    use_judge = bool(src_summary.get("faithfulness", {}).get("enabled", False))
+    split = str(src_summary.get("split", "dev"))
+    repeats = int(src_summary.get("repeats", 1))
+    include_drafts = bool(src_summary.get("include_drafts", False))
+    skipped_draft_ids = list(src_summary.get("skipped_draft_ids", []))
+    store_fp = (
+        store.fingerprint()
+        if store is not None
+        else str(src_summary.get("store_fingerprint", ""))
+    )
+
+    all_records: list[QuestionOutcomeRecord] = []
+    details: list[dict[str, Any]] = []
+
+    for item in src_details:
+        raw_q = item["question"]
+        qid = str(raw_q["id"])
+        q = golden_by_id.get(qid) or GoldenQuestion.model_validate(raw_q)
+        r_idx = int(item.get("repeat_index", 0))
+        old_rec: dict[str, Any] = item["outcome_record"]
+
+        chunks = [RetrievedChunk(**c) for c in item.get("retrieved_chunks", [])]
+        cits_full = [Citation(**c) for c in item.get("citations_full", [])]
+        num_sources = max(1, int(old_rec.get("detected_sources_count", 1)))
+        q_slice = (
+            classify_expected_page_quality(q, store)
+            if store is not None
+            else str(old_rec.get("expected_quality_slice", "clean"))
+        )
+        r_fields = _compute_retrieval_fields(q, chunks, num_sources)
+
+        ans_str = item.get("answer")
+        grounded = old_rec.get("grounded")
+        if not retrieval_only and ans_str is not None:
+            q_outcome = outcome(q, str(ans_str))
+            if grounded and cits_full and chunks:
+                chunk_by_id = {c.chunk_id: c for c in chunks}
+                cited_chunks = [
+                    chunk_by_id[c.chunk_id]
+                    for c in cits_full
+                    if c.chunk_id in chunk_by_id
+                ]
+                unsup_nums = find_unsupported_numbers(str(ans_str), cited_chunks)
+            else:
+                unsup_nums = []
+        else:
+            q_outcome = None
+            unsup_nums = []
+
+        top6_refs = [
+            RetrievedRef(
+                chunk_id=c.chunk_id,
+                source=c.source,
+                page=c.page,
+                score=c.score,
+                text_quality=c.text_quality,
+            )
+            for c in chunks[:6]
+        ]
+        cit_refs = [
+            CitationRef(
+                n=c.n,
+                chunk_id=c.chunk_id,
+                source=c.source,
+                page=c.page,
+                text_quality=c.text_quality,
+            )
+            for c in cits_full
+        ]
+
+        rec = QuestionOutcomeRecord(
+            id=q.id,
+            question=q.question,
+            type=q.type,
+            answerable=q.answerable,
+            human_verified=q.human_verified,
+            expected_quality_slice=q_slice,
+            outcome=q_outcome,
+            grounded=grounded,
+            reason=old_rec.get("reason"),
+            invalid_citations=int(old_rec.get("invalid_citations", 0)),
+            unsupported_numbers=unsup_nums,
+            retrieve_ms=float(old_rec.get("retrieve_ms", 0.0)),
+            generate_ms=float(old_rec.get("generate_ms", 0.0)),
+            total_ms=float(old_rec.get("total_ms", 0.0)),
+            input_tokens=old_rec.get("input_tokens"),
+            output_tokens=old_rec.get("output_tokens"),
+            from_cache=True,
+            retrieved_top6=top6_refs,
+            citations=cit_refs,
+            split=q.split,
+            repeat_index=r_idx,
+            detected_sources_count=num_sources,
+            judge_faithful=old_rec.get("judge_faithful"),
+            judge_parse_ok=old_rec.get("judge_parse_ok"),
+            supporting_citations_count=int(old_rec.get("supporting_citations_count", 0)),
+            evaluated_citations_count=int(old_rec.get("evaluated_citations_count", 0)),
+            non_supporting_citations=list(old_rec.get("non_supporting_citations", [])),
+            status=q.status,
+            **r_fields,
+        )
+        all_records.append(rec)
+        details.append(
+            {
+                "question": q.model_dump(),
+                "repeat_index": r_idx,
+                "outcome_record": asdict(rec),
+                "answer": ans_str,
+                "retrieved_chunks": [asdict(c) for c in chunks],
+                "citations_full": [asdict(c) for c in cits_full],
+                "judge_verdict": item.get("judge_verdict"),
+                "cited_passages_full": item.get("cited_passages_full", []),
+            }
+        )
+
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    safe_label = "".join(c if c.isalnum() or c in "-_" else "-" for c in label)
+    stem = f"{timestamp}_{safe_label}"
+    status = str(src_summary.get("status", "completed"))
+
+    summary = _aggregate_summary(
+        all_records=all_records,
+        settings=settings,
+        label=label,
+        timestamp=timestamp,
+        retrieval_only=retrieval_only,
+        status=status,
+        store_fp=store_fp,
+        split=split,
+        repeats=repeats,
+        use_judge=use_judge,
+        include_drafts=include_drafts,
+        skipped_draft_ids=skipped_draft_ids,
+    )
+    md_report = format_markdown_report(summary)
+
+    run_json_path = runs_dir / f"{stem}.json"
+    metrics_json_path = results_dir / f"{stem}.metrics.json"
+    markdown_path = results_dir / f"{stem}.md"
+    judge_review_path: Path | None = None
+
+    run_json_path.write_text(
+        json.dumps(
+            {"summary": summary, "details": details},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    metrics_json_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    markdown_path.write_text(md_report, encoding="utf-8")
+
+    if use_judge and not retrieval_only:
+        judge_review_path = runs_dir / f"{stem}_judge_review.md"
+        review_md = format_judge_review_markdown(
+            details, label=label, timestamp=timestamp
+        )
+        judge_review_path.write_text(review_md, encoding="utf-8")
+
+    return EvalRunOutput(
+        label=label,
+        timestamp=timestamp,
+        status=status,
+        quota_exceeded=False,
+        summary=summary,
+        markdown_report=md_report,
+        run_json_path=run_json_path,
+        metrics_json_path=metrics_json_path,
+        markdown_path=markdown_path,
+        judge_review_path=judge_review_path,
+    )
+

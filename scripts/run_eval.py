@@ -10,6 +10,7 @@ from annual_report_rag.evaluation.golden import (
 )
 from annual_report_rag.evaluation.runner import (
     classify_expected_page_quality,
+    rescore_run,
     run_eval,
 )
 from annual_report_rag.retrieval.store import ChromaStore
@@ -25,6 +26,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="eval",
         help="Short label for the evaluation run (e.g. baseline-v1).",
+    )
+    parser.add_argument(
+        "--rescore",
+        type=str,
+        default=None,
+        help="Rescore cached answers from a prior run label (e.g. baseline-v1-full) with the current scorer and zero API/judge calls.",
     )
     parser.add_argument(
         "--split",
@@ -81,7 +88,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def run_cli(args: argparse.Namespace) -> int:
-    """Loads golden set, validates against ChromaStore, and optionally executes run_eval."""
+    """Loads golden set, validates against ChromaStore, and optionally executes run_eval or rescore_run."""
     settings = load_settings()
     golden = load_golden_set(settings.evaluation.golden_set_path)
 
@@ -134,20 +141,30 @@ def run_cli(args: argparse.Namespace) -> int:
             print("\nAll expected pages have indexed chunks in the vector store (0 warnings).")
         return 0
 
-    output = run_eval(
-        golden=golden,
-        settings=settings,
-        label=args.label,
-        retrieval_only=args.retrieval_only,
-        only_type=args.only_type,
-        limit=args.limit,
-        use_cache=not args.no_cache,
-        split=args.split,
-        repeats=args.repeats,
-        use_judge=args.judge,
-        include_drafts=args.include_drafts,
-        store=store,
-    )
+    if args.rescore:
+        target_label = args.label if args.label != "eval" else "baseline-v2"
+        output = rescore_run(
+            golden=golden,
+            settings=settings,
+            source_run_label=args.rescore,
+            label=target_label,
+            store=store,
+        )
+    else:
+        output = run_eval(
+            golden=golden,
+            settings=settings,
+            label=args.label,
+            retrieval_only=args.retrieval_only,
+            only_type=args.only_type,
+            limit=args.limit,
+            use_cache=not args.no_cache,
+            split=args.split,
+            repeats=args.repeats,
+            use_judge=args.judge,
+            include_drafts=args.include_drafts,
+            store=store,
+        )
 
     print(output.markdown_report)
     print(f"Saved full run detail (gitignored): {output.run_json_path}")

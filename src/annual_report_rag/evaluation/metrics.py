@@ -50,13 +50,21 @@ def strip_citation_markers(text: str) -> str:
     return _CITATION_MARKER_RE.sub("", text)
 
 
+def _normalize_numeric_token(raw_num: str) -> str:
+    """Normalizes a numeric token by removing commas and stripping trailing zeros after the decimal point."""
+    cleaned = raw_num.replace(",", "")
+    if "." in cleaned:
+        cleaned = cleaned.rstrip("0").rstrip(".")
+    return cleaned or "0"
+
+
 def numeric_tokens(text: str) -> list[str]:
-    """Extracts numeric tokens from text with commas removed (e.g. '5,84,519' -> '584519', '4.6%' -> '4.6')."""
+    """Extracts numeric tokens from text with commas and trailing decimal zeros removed (e.g. '48.00' -> '48', '25.0' -> '25')."""
     if not text:
         return []
     without_citations = strip_citation_markers(text)
     raw_matches = _NUMERIC_TOKEN_RE.findall(without_citations)
-    return [match.replace(",", "") for match in raw_matches]
+    return [_normalize_numeric_token(match) for match in raw_matches]
 
 
 def _extract_single_number_candidate(candidate: str) -> str | None:
@@ -64,7 +72,7 @@ def _extract_single_number_candidate(candidate: str) -> str | None:
     match = _PURE_NUMBER_ENTRY_RE.match(candidate)
     if not match:
         return None
-    return match.group(1).replace(",", "")
+    return _normalize_numeric_token(match.group(1))
 
 
 def _alternative_matches(

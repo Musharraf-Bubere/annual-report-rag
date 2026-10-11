@@ -547,3 +547,25 @@ Evaluated the corrected `dev` split (`29` ready questions out of `30`; `q27` ski
 2. **`baseline-v1-full-repeats` (`--repeats 3`, `split=dev`, $n=87$ passes)**:
    - **`flip_rate = 0.0000`**: All 29 `dev` questions produced the exact same deterministic outcome across all 3 repeats (`accuracy = 0.7586`, `answerable_accuracy = 0.7200`).
 
+---
+
+## Phase 4e: Scorer Fixes and `baseline-v2` Rescore
+
+### What we built
+1. **Trailing Decimal Zero Stripping (`evaluation/metrics.py`)**:
+   - Added `_normalize_numeric_token()` so trailing zeros after the decimal point are stripped (`48.00 == 48` and `25.0 == 25.00`), while keeping exact token equality (`"11,000%"` $\neq$ `"110"`) and Indian/Western comma normalization.
+2. **Fiscal-Year Support in `find_unsupported_numbers()` (`generation/checks.py`)**:
+   - Added `_is_fiscal_year_supported()` so a 4-digit year (e.g. `2026`) is not flagged as unsupported when a cited passage contains the fiscal-year form `"2025-26"` or `"FY26"` (resolving the false alarm on `q33`).
+3. **Offline Rescoring (`--rescore <run_label>`, `evaluation/runner.py`, `scripts/run_eval.py`)**:
+   - Added `rescore_run()` and `--rescore <run_label>` to rescore cached answers and retrieved chunks from a prior run with the current scorer and updated `golden_questions.json`, with zero API or judge calls.
+4. **Updated `q25` Expected Pages (`data/eval/golden_questions.json`)**:
+   - Added `infosys-ar-26` PDF pages `38` and `119` (the dividend tables containing `48.00`) to `q25`'s `expected_pages`.
+5. **Rescore Results (`baseline-v1-full` $\to$ `baseline-v2`, 0 API calls)**:
+   - `page_hit@3`: `0.7600` $\to$ `0.8000` (`+0.0400`); `page_hit@6`: `0.8000` $\to$ `0.8400` (`+0.0400`); `MRR`: `0.6280` $\to$ `0.6480` (`+0.0200`).
+   - `text_hit_any@6` & `text_hit_all@6`: `0.8000` $\to$ `0.8400` (`+0.0400`).
+   - `CORRECT`: `18` $\to$ `19` (`+1`, `q25` moved from `WRONG` to `CORRECT`); `WRONG`: `2` $\to$ `1`.
+   - `questions_with_unsupported_numbers`: `1 (['q33'])` $\to$ `0 ([])`.
+6. **Stored-Chunk Diagnostic on `tcs-ar-26` Pages 8, 25, and 36**:
+   - Verified that `110` exists in `tcs-ar-26-p36-c0` (`Total 110 39,7 99. 0`), `19.8%` (and `8.8%`) exists in `tcs-ar-26-p8-c7` (`with the Net M argin of 19.8%`), and `13.7%` exists in `tcs-ar-26-p25-c0` (`Voluntary LTM Attrition in IT services 13.7%`). Thus `q03`, `q05`, `q14`, and `q26` are pure retrieval/crowding misses rather than missing index text.
+
+

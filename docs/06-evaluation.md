@@ -94,7 +94,7 @@ uv run python scripts/run_judge_calibration.py
 ## 4. Golden Set Rules & Workflow
 
 1. **Schema Fields (`data/eval/golden_questions.json`)**: `id` (unique), `question`, `type` (`fact | comparison | table | unanswerable | adversarial`), `answerable` (`bool`), `expected_sources` (`list[str]`), `expected_pages` (`list[{source, page}]` using 1-indexed PDF page numbers), `must_contain`, `must_not_contain`, `notes`, `human_verified` (`bool`), `split` (`"dev" | "test"`), and `status` (`"draft_needs_fill" | "ready_unverified" | "verified"`). The loader (`load_golden_set`) also accepts neutral draft JSON files (`data/eval/drafts/golden_questions_draft_v1.json`) directly.
-2. **Matching Rules**: Citation markers (`[1]`, `[1, 3]`) are stripped first; numeric `must_contain` entries match by **exact normalized token equality** (`"11,000%"` $\to$ `"11000"` $\neq$ `"110"`, while Indian `5,84,519` and Western `584,519` both normalize to `"584519"`); non-numeric entries use case-insensitive substring and `"a|b"` any-of syntax.
+2. **Matching Rules**: Citation markers (`[1]`, `[1, 3]`) are stripped first; numeric `must_contain` entries match by **exact normalized token equality** with commas and trailing decimal zeros stripped (`"48.00"` $\to$ `"48"`, `"25.0"` and `"25.00"` $\to$ `"25"`, `"11,000%"` $\to$ `"11000"` $\neq$ `"110"`, while Indian `5,84,519` and Western `584,519` both normalize to `"584519"`); non-numeric entries use case-insensitive substring and `"a|b"` any-of syntax. In `find_unsupported_numbers()`, a 4-digit year (e.g. `2026`) is also accepted when a cited passage contains the fiscal-year form `"2025-26"` or `"FY26"`.
 3. **CLI Commands**:
    ```powershell
    # Validate golden set (reports total, dev/test, and status/draft counts)
@@ -106,6 +106,9 @@ uv run python scripts/run_judge_calibration.py
 
    # Run dev split with LLM judge (excludes draft_needs_fill by default)
    uv run python scripts/run_eval.py --label baseline-v1-full --judge
+
+   # Rescore cached answers from a prior run with the current scorer (zero API or judge calls)
+   uv run python scripts/run_eval.py --rescore baseline-v1-full --label baseline-v2
 
    # Measure repeat stability across 3 repeats on dev split
    uv run python scripts/run_eval.py --label baseline-v1-full-repeats --repeats 3
@@ -121,5 +124,5 @@ uv run python scripts/run_judge_calibration.py
 1. **Same-Family Judge Bias (Self-Preference / Shared Blind Spots)**: Both the answer generator and the faithfulness judge currently use the same `GenerationProvider` (`gemini-3.1-flash-lite-preview`). An LLM judge from the same model family as the generator is systematically biased toward agreeing with the generator's phrasing and shares the same reasoning blind spots. Always spot-check the generated `data/eval/runs/<ts>_<label>_judge_review.md` by hand.
 2. **Sub-Claim Granularity in Multi-Citation Sentences**: The judge prompt grades whether each cited passage *"supports at least one claim in the answer that cites it."* When a sentence makes multiple sub-claims and attaches `[5][6]` at the end, if `[6]` supports two of the three sub-claims while `[5]` supports all three, `[6]` is marked `supports=True`.
 3. **Unverified & Draft Questions (`human_verified = false`)**: In `golden_questions.json`, `28` of `40` questions still have `human_verified=false` (`12` are `human_verified=true`; `39` are `ready_unverified` and `1` is `draft_needs_fill`). Unverified questions must not be used for final headline numbers until verified against the source PDFs.
-4. **Weak Lexical Labels & Single Corpus**: Deterministic `must_contain` labels only check token presence (and exact normalized token equality on numbers, e.g. `"48.00"` vs `"48"` on `q25`), and all current questions come from two FY2025–26 Indian IT services reports (`tcs-ar-26`, `infosys-ar-26`).
+4. **Weak Lexical Labels & Single Corpus**: Deterministic `must_contain` labels only check token presence, and all current questions come from two FY2025–26 Indian IT services reports (`tcs-ar-26`, `infosys-ar-26`).
 

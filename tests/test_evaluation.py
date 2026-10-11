@@ -36,7 +36,7 @@ from annual_report_rag.evaluation.metrics import (
     text_hit_at_k,
 )
 from annual_report_rag.evaluation.reporting import compare_metrics_dicts
-from annual_report_rag.evaluation.runner import compute_cache_key, run_eval
+from annual_report_rag.evaluation.runner import compute_cache_key, rescore_run, run_eval
 from annual_report_rag.generation.prompts import NOT_FOUND_MESSAGE
 from annual_report_rag.ingestion.chunker import Chunk
 from annual_report_rag.providers.base import (
@@ -80,7 +80,7 @@ class ScriptedGenerator(GenerationProvider):
 
 
 def test_strip_citation_markers_and_numeric_tokens() -> None:
-    """Verifies citation stripping, Indian/Western comma normalization, ₹ and %, and exact token matching."""
+    """Verifies citation stripping, Indian/Western comma normalization, trailing decimal zeros, ₹ and %, and exact token matching."""
     raw = "Revenue was ₹2,67,021 crore (growth 4.6%) with 5,84,519 permanent and 584,519 total [1][3] and [2, 4]."
     stripped = strip_citation_markers(raw)
     assert "[1]" not in stripped
@@ -88,6 +88,18 @@ def test_strip_citation_markers_and_numeric_tokens() -> None:
 
     tokens = numeric_tokens(raw)
     assert tokens == ["267021", "4.6", "584519", "584519"]
+
+    # Trailing zeros after decimal point: 48.00 == 48 and 25.0 == 25.00
+    assert numeric_tokens("Dividend is `48.00 and margin is 25.0% vs 25.00%.") == [
+        "48",
+        "25",
+        "25",
+    ]
+    assert entry_matches_text("Infosys's total dividend per share is `48.00 [2].", "48") is True
+    assert entry_matches_text("Infosys's total dividend per share is ₹48 [2].", "48.00") is True
+    assert entry_matches_text("Operating margin was 25.00% [1].", "25.0") is True
+    assert entry_matches_text("Operating margin was 25.0% [1].", "25.00") is True
+    assert entry_matches_text("Margin was 48.6% [1].", "48") is False
 
     # Exact token equality: "11,000%" must NOT satisfy "110"
     dividend_text = "The dividend for FY 2026 is 11,000% of the paid-up value [3]."
@@ -651,3 +663,90 @@ def test_runner_split_repeats_judge_caching_and_no_chunk_text_leak(tmp_path: Pat
     assert out_quota.quota_exceeded is True
     assert out_quota.status == "partial_daily_quota_exceeded"
     assert out_quota.summary["num_questions"] == 1
+
+
+def test_rescore_run_no_api_or_judge_calls(tmp_path: Path) -> None:
+    """Verifies rescore_run rescores cached answers with updated golden expected_pages/must_contain and zero API calls."""
+    db_path = str(tmp_path / "rescore_chroma")
+    store = ChromaStore(persist_path=db_path, collection_name="rescore_col")
+    embedder = FakeProvider(embedding_dim=4)
+    settings = _build_test_settings(min_score=0.0, top_k=2)
+
+    q_initial = GoldenQuestion(
+        id="q25",
+        question="What is Infosys's total dividend per share for fiscal 2026?",
+        type="fact",
+        answerable=True,
+        expected_pages=[ExpectedPage(source="infosys-ar-26", page=16)],
+        must_contain=["999"],  # Intentionally wrong in initial run so outcome is WRONG
+        split="dev",
+    )
+    vec = embedder.embed([q_initial.question], purpose="query")[0]
+    store.add_chunks(
+        [
+            Chunk(
+                id="infy-p38-c0",
+                text="Regions 2025-26 Total dividend 48.00 per share.",
+                source="infosys-ar-26",
+                page=38,
+                chunk_index=0,
+            )
+        ],
+        [vec],
+    )
+
+    eval_dir = tmp_path / "rescore_eval"
+    gen = ScriptedGenerator(
+        ["Infosys's total dividend per share for fiscal 2026 is `48.00 [1]."]
+    )
+    judge_gen = ScriptedGenerator(
+        ['{"faithful": true, "unsupported_claims": [], "citations": [{"n": 1, "supports": true}]}']
+    )
+
+    out_v1 = run_eval(
+        golden=[q_initial],
+        settings=settings,
+        label="baseline-v1-test",
+        split="dev",
+        use_judge=True,
+        store=store,
+        embedder=embedder,
+        generator=gen,
+        judge_provider=judge_gen,
+        eval_dir=eval_dir,
+    )
+    assert out_v1.summary["answers"]["outcome_counts"]["WRONG"] == 1
+    assert out_v1.summary["retrieval"]["page_hit_at_6"] == 0.0
+
+    # Now update the golden question (adding page 38 and fixing must_contain to ["48"]) and rescore
+    q_updated = GoldenQuestion(
+        id="q25",
+        question="What is Infosys's total dividend per share for fiscal 2026?",
+        type="fact",
+        answerable=True,
+        expected_pages=[
+            ExpectedPage(source="infosys-ar-26", page=16),
+            ExpectedPage(source="infosys-ar-26", page=38),
+        ],
+        must_contain=["48"],
+        split="dev",
+    )
+    out_v2 = rescore_run(
+        golden=[q_updated],
+        settings=settings,
+        source_run_label="baseline-v1-test",
+        label="baseline-v2",
+        store=store,
+        eval_dir=eval_dir,
+    )
+    assert out_v2.label == "baseline-v2"
+    assert out_v2.summary["answers"]["outcome_counts"]["CORRECT"] == 1
+    assert out_v2.summary["answers"]["outcome_counts"]["WRONG"] == 0
+    assert out_v2.summary["answers"]["questions_with_unsupported_numbers"] == 0
+    assert out_v2.summary["retrieval"]["page_hit_at_6"] == 1.0
+    assert out_v2.summary["retrieval"]["text_hit_all_at_6"] == 1.0
+    assert out_v2.summary["faithfulness"]["faithfulness_rate"] == 1.0
+    # Confirm zero additional generator or judge calls were made
+    assert len(gen.calls) == 1
+    assert len(judge_gen.calls) == 1
+

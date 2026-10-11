@@ -202,9 +202,10 @@ The repository includes a deterministic + LLM-as-a-judge evaluation harness (`sr
    ```powershell
    uv run python scripts/run_eval.py --retrieval-only --label baseline-v0-retrieval
    ```
-5. **Run full evaluation with the faithfulness judge (cached in `data/eval/cache/`)**:
+5. **Run full evaluation with the faithfulness judge (cached in `data/eval/cache/`) or rescore a prior run (`--rescore`) with zero API/judge calls**:
    ```powershell
    uv run python scripts/run_eval.py --label baseline-v1-full --judge
+   uv run python scripts/run_eval.py --rescore baseline-v1-full --label baseline-v2
    ```
 6. **Run multi-repeat stability evaluation (`flip_rate` across $N$ generation passes)**:
    ```powershell
@@ -215,23 +216,23 @@ The repository includes a deterministic + LLM-as-a-judge evaluation harness (`sr
    uv run python scripts/compare_runs.py data/eval/results/<runA>.metrics.json data/eval/results/<runB>.metrics.json
    ```
 
-### Baseline v1 Full Summary (`baseline-v1-full` & `baseline-v1-full-repeats` on `29` Ready `dev` Questions)
+### Baseline v2 Summary (`baseline-v2` Rescored on `29` Ready `dev` Questions)
 
 > [!WARNING]
 > **Preliminary Benchmark (`split=dev`, $n = 29$, `q27` skipped as draft)**: Some evaluated questions still have `human_verified = false`. Full committed reports are in [`data/eval/results/`](data/eval/results/).
 
-| Metric Category | Metric | `baseline-v1-full` (`split=dev`, $n=29$) |
+| Metric Category | Metric | `baseline-v2` (`split=dev`, $n=29$) |
 | :--- | :--- | :--- |
-| **Retrieval ($n=25$ answerable)** | `page_hit@1` / `page_hit@3` / `page_hit@6` (comparison $k$ scaled by sources) | `0.4800` / `0.7600` / `0.8000` |
-| **Retrieval ($n=25$ answerable)** | `MRR` / `distinct_pages@6` | `0.6280` / `5.00` |
-| **Retrieval ($n=25$ answerable)** | `text_hit_any@1/@3/@6` \| `text_hit_all@1/@3/@6` | `0.6000 / 0.6800 / 0.8000` \| `0.5600 / 0.6800 / 0.8000` |
-| **Answer Outcomes ($n=29$)** | `CORRECT` / `WRONG` / `FALSE_REFUSAL` | `18` / `2` / `5` |
+| **Retrieval ($n=25$ answerable)** | `page_hit@1` / `page_hit@3` / `page_hit@6` (comparison $k$ scaled by sources) | `0.4800` / `0.8000` / `0.8400` |
+| **Retrieval ($n=25$ answerable)** | `MRR` / `distinct_pages@6` | `0.6480` / `5.00` |
+| **Retrieval ($n=25$ answerable)** | `text_hit_any@1/@3/@6` \| `text_hit_all@1/@3/@6` | `0.6000 / 0.7200 / 0.8400` \| `0.5600 / 0.7200 / 0.8400` |
+| **Answer Outcomes ($n=29$)** | `CORRECT` / `WRONG` / `FALSE_REFUSAL` | `19` / `1` / `5` |
 | **Refusal & Safety ($n=4$)** | `CORRECT_REFUSAL` / `ANSWERED_ANYWAY` | `4` / `0` |
-| **Grounding & Numbers** | `grounded_rate` (answerable) / `unsupported_numbers` | `0.8000` / `1` (`['q33']`) |
+| **Grounding & Numbers** | `grounded_rate` (answerable) / `unsupported_numbers` | `0.8000` / `0` (`[]`) |
 | **Faithfulness Judge ($n=20$ grounded)** | `faithfulness_rate` / `citation_precision` / `judge_error` | `1.0000` (`20/20`) / `1.0000` (`34/34`) / `0` |
 | **Judge Calibration ($n=6$ synthetic)** | `ExampleCo` synthetic agreement (`cal01`–`cal06`) | `1.0000` (`6/6`) |
 | **Repeat Stability (`29` dev questions, 3 repeats, $n=87$)** | `flip_rate` / `accuracy` / `answerable_accuracy` | `0.0000` / `0.7586 (0.7586–0.7586)` / `0.7200 (0.7200–0.7200)` |
-| **Quality Slice: `all_clean` ($n=14$)** | `page_hit@6` / `MRR` / `text_hit_all@6` / `CORRECT` | `0.7857` / `0.5976` / `0.8571` / `12/14` |
+| **Quality Slice: `all_clean` ($n=14$)** | `page_hit@6` / `MRR` / `text_hit_all@6` / `CORRECT` | `0.8571` / `0.6333` / `0.9286` / `13/14` |
 | **Quality Slice: `mixed` ($n=3$)** | `page_hit@6` / `MRR` / `text_hit_all@6` / `CORRECT` | `1.0000` / `0.8333` / `1.0000` / `3/3` |
 | **Quality Slice: `all_degraded` ($n=8$)** | `page_hit@6` / `MRR` / `text_hit_all@6` / `CORRECT` | `0.7500` / `0.6042` / `0.6250` / `3/8` |
 | **Latency (`p50` / `p95` / `max`, $n=29$)** | `retrieve_ms` \| `generate_ms` \| `total_ms` | `48.67 / 153.65 / 246.86 ms` \| `1411.39 / 2388.17 / 50705.60 ms` \| `1492.38 / 2436.90 / 50777.88 ms` |

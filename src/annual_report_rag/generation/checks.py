@@ -11,9 +11,26 @@ _CANDIDATE_NUMBER_RE = re.compile(
 )
 
 
+_YEAR_4DIGIT_RE = re.compile(r"^(?:19|20)\d{2}$")
+
+
 def _strip_commas_and_spaces(text: str) -> str:
     """Removes all commas and whitespace characters from a string."""
     return re.sub(r"[,\s]+", "", text)
+
+
+def _is_fiscal_year_supported(norm_num: str, raw_passages: Sequence[str]) -> bool:
+    """Returns True if norm_num is a 4-digit year (e.g. '2026') matched by '2025-26' or 'FY26' in any passage."""
+    if not _YEAR_4DIGIT_RE.match(norm_num):
+        return False
+    year_int = int(norm_num)
+    prev_year = str(year_int - 1)
+    short_yy = norm_num[2:]
+    fy_pattern = re.compile(
+        rf"(?:(?<!\d){prev_year}\s*[-–—/]\s*{short_yy}(?!\d)|\bfy\s*['’\-]?\s*{short_yy}(?!\d))",
+        re.IGNORECASE,
+    )
+    return any(bool(fy_pattern.search(p)) for p in raw_passages)
 
 
 def extract_answer_numbers(answer: str) -> list[str]:
@@ -34,7 +51,8 @@ def find_unsupported_numbers(
     Extracts numbers from the answer that have at least 3 digits or contain a
     decimal point or comma (ignoring bracketed citation markers like [1]), and
     checks whether each appears in at least one cited passage after removing
-    commas and whitespace from both the number and the passage text.
+    commas and whitespace from both the number and the passage text (or in
+    fiscal-year form such as '2025-26' / 'FY26' for a 4-digit year like '2026').
 
     Diagnostic Limits (non-blocking):
     1. Small integers (1 or 2 digits without decimals/commas, e.g. '5' or '31')
@@ -50,7 +68,8 @@ def find_unsupported_numbers(
     if not candidates:
         return []
 
-    normalized_passages = [_strip_commas_and_spaces(c.text) for c in cited_chunks]
+    raw_passages = [c.text for c in cited_chunks]
+    normalized_passages = [_strip_commas_and_spaces(p) for p in raw_passages]
 
     unsupported: list[str] = []
     seen: set[str] = set()
@@ -58,7 +77,10 @@ def find_unsupported_numbers(
         norm_num = _strip_commas_and_spaces(num_str)
         if not norm_num:
             continue
-        is_supported = any(norm_num in passage for passage in normalized_passages)
+        is_supported = (
+            any(norm_num in passage for passage in normalized_passages)
+            or _is_fiscal_year_supported(norm_num, raw_passages)
+        )
         if not is_supported and num_str not in seen:
             seen.add(num_str)
             unsupported.append(num_str)
