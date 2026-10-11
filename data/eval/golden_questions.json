@@ -14,6 +14,10 @@
       },
       {
         "source": "tcs-ar-26",
+        "page": 69
+      },
+      {
+        "source": "tcs-ar-26",
         "page": 108
       }
     ],
@@ -80,14 +84,14 @@
       "110"
     ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). Total FY2026 dividend Rs 110/share (11,000% of paid-up value); final Rs 31 recommended.",
     "human_verified": false,
     "split": "dev",
     "status": "ready_unverified"
   },
   {
     "id": "q04",
-    "question": "What was TCS's net income in fiscal 2026?",
+    "question": "What was TCS's profit attributable to shareholders for fiscal 2026, excluding exceptional items?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
@@ -107,14 +111,14 @@
       "52,820"
     ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). 52,820 is EXCLUDING exceptional items. Reported = 49,210 (after restructuring, Labour Codes, legal-claim items).",
     "human_verified": false,
     "split": "test",
     "status": "ready_unverified"
   },
   {
     "id": "q05",
-    "question": "What was TCS's net profit margin?",
+    "question": "What was TCS's net profit margin for fiscal 2026 (profit attributable to shareholders, excluding exceptional items, as a percentage of revenue)?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
@@ -134,7 +138,7 @@
       "19.8"
     ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). 19.8% is excluding exceptional items (MD&A table). Reported margin is lower.",
     "human_verified": false,
     "split": "dev",
     "status": "ready_unverified"
@@ -154,11 +158,10 @@
       }
     ],
     "must_contain": [
-      "583",
-      "1,073"
+      "583"
     ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). 583 = 31 Mar 2026; 1,073 = 31 Mar 2025 (prior year), so only 583 is required.",
     "human_verified": false,
     "split": "dev",
     "status": "ready_unverified"
@@ -174,18 +177,30 @@
     "expected_pages": [
       {
         "source": "infosys-ar-26",
+        "page": 16
+      },
+      {
+        "source": "infosys-ar-26",
         "page": 26
       },
       {
         "source": "infosys-ar-26",
+        "page": 33
+      },
+      {
+        "source": "infosys-ar-26",
         "page": 77
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 81
       }
     ],
     "must_contain": [
       "9.6"
     ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Pages 33/81/16 also state the figure (81 was retrieved top-1 earlier and wrongly counted as a miss).",
     "human_verified": false,
     "split": "dev",
     "status": "ready_unverified"
@@ -199,6 +214,10 @@
       "infosys-ar-26"
     ],
     "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 25
+      },
       {
         "source": "infosys-ar-26",
         "page": 77
@@ -302,33 +321,43 @@
     "expected_sources": [
       "tcs-ar-26"
     ],
-    "expected_pages": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 24
+      }
+    ],
     "must_contain": [
       "25.0"
     ],
     "must_not_contain": [],
     "notes": "",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q14",
-    "question": "By what percentage did TCS's net income grow?",
+    "question": "By what percentage did TCS's profit attributable to shareholders, excluding exceptional items, grow in fiscal 2026?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "tcs-ar-26"
     ],
-    "expected_pages": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 58
+      }
+    ],
     "must_contain": [
       "8.8"
     ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). 8.8% growth is on the excluding-exceptional-items basis (52,820 vs 48,553).",
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q15",
@@ -348,8 +377,8 @@
       "2.4"
     ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). Report says revenue DECLINED by 2.4% in constant currency; 2.4 matches with or without a minus sign.",
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -368,11 +397,10 @@
       }
     ],
     "must_contain": [
-      "506",
-      "1,012"
+      "506"
     ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). 506 = 31 Mar 2026; 1,012 = 31 Mar 2025 (prior year), so only 506 is required.",
     "human_verified": false,
     "split": "test",
     "status": "ready_unverified"
@@ -395,7 +423,7 @@
       "6,17,437|617,437"
     ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). Total employees (permanent + other than permanent) 6,17,437, BRSR table (printed page 138 = PDF page 108).",
     "human_verified": false,
     "split": "dev",
     "status": "ready_unverified"
@@ -409,6 +437,14 @@
       "infosys-ar-26"
     ],
     "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 16
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 25
+      },
       {
         "source": "infosys-ar-26",
         "page": 77
@@ -434,6 +470,10 @@
     "expected_pages": [
       {
         "source": "infosys-ar-26",
+        "page": 16
+      },
+      {
+        "source": "infosys-ar-26",
         "page": 26
       }
     ],
@@ -455,6 +495,18 @@
       "infosys-ar-26"
     ],
     "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 10
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 16
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 33
+      },
       {
         "source": "infosys-ar-26",
         "page": 77
@@ -500,15 +552,20 @@
     "expected_sources": [
       "tcs-ar-26"
     ],
-    "expected_pages": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 24
+      }
+    ],
     "must_contain": [
       "66,838"
     ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). EBIT before other income = 66,838 (25.0% margin).",
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q23",
@@ -518,61 +575,93 @@
     "expected_sources": [
       "infosys-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 10
+      }
+    ],
+    "must_contain": [
+      "3,28,594"
+    ],
     "must_not_contain": [],
     "notes": "",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q24",
-    "question": "What was Infosys's net profit for fiscal 2026?",
+    "question": "What was Infosys's consolidated profit after tax for fiscal 2026?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "infosys-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 33
+      }
+    ],
+    "must_contain": [
+      "29,474"
+    ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). Consolidated PAT 29,474. Profit attributable to owners = 29,440; standalone PAT = 29,211.",
+    "human_verified": true,
     "split": "test",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q25",
-    "question": "What is Infosys's total dividend per share for fiscal 2026?",
+    "question": "What is Infosys's total dividend per share for fiscal 2026 (interim plus final)?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "infosys-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 16
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 18
+      }
+    ],
+    "must_contain": [
+      "48"
+    ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). Total Rs 48 = interim Rs 23 + final Rs 25. Your earlier entry used '25' (final only) with page 323: wrong answer; page needs a lookup. Pages from lookup + text order; confirm p16 shows 48.0 and p18 says total dividend Rs 48.",
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q26",
-    "question": "What is TCS's employee attrition rate?",
+    "question": "What was TCS's voluntary LTM attrition rate in IT services for fiscal 2026?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "tcs-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 25
+      }
+    ],
+    "must_contain": [
+      "13.7"
+    ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). 13.7%, IT services, voluntary. Overall turnover elsewhere in the report differs.",
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q27",
@@ -585,74 +674,110 @@
     "expected_pages": [],
     "must_contain": [],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "NOT FOUND in extracted text: no Infosys attrition percentage located (only footnotes about attrition assumptions). Search the PDF for 'attrition'. If absent, convert this to an unanswerable question.",
     "human_verified": false,
     "split": "dev",
     "status": "draft_needs_fill"
   },
   {
     "id": "q28",
-    "question": "What percentage of TCS's employees are women?",
+    "question": "What percentage of TCS's permanent employees are women?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "tcs-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 108
+      }
+    ],
+    "must_contain": [
+      "35.2"
+    ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). BRSR table: permanent 35.2% women; total incl. non-permanent 35.3% (printed page 138 = PDF page 108).",
     "human_verified": false,
     "split": "test",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q29",
-    "question": "What percentage of Infosys's employees are women?",
+    "question": "What percentage of Infosys's workforce are women?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "infosys-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 25
+      }
+    ],
+    "must_contain": [
+      "39.5"
+    ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). Highlights page: '39.5% Women in the workforce'. PDF page needs a lookup. Page inferred (same highlights page as q08's 443); confirm in viewer.",
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q30",
-    "question": "What was TCS's earnings per share?",
+    "question": "What was TCS's earnings per share for fiscal 2026, excluding exceptional items?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "tcs-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 24
+      }
+    ],
+    "must_contain": [
+      "145.99"
+    ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). 145.99 is excluding exceptional items. Reported basic/diluted EPS = 136.01 (consolidated).",
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q31",
-    "question": "What was Infosys's earnings per share?",
+    "question": "What was Infosys's consolidated basic earnings per share for fiscal 2026?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "infosys-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 16
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 26
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 33
+      }
+    ],
+    "must_contain": [
+      "71.58"
+    ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). Consolidated basic EPS 71.58; standalone basic EPS = 70.87. PDF page needs a lookup.",
     "human_verified": false,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q32",
@@ -662,61 +787,99 @@
     "expected_sources": [
       "tcs-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 59
+      }
+    ],
+    "must_contain": [
+      "North America",
+      "48.6"
+    ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). MD&A revenue by geography: North America 48.6%. PDF page needs a lookup.",
     "human_verified": false,
     "split": "test",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q33",
-    "question": "Which geography contributes the most to Infosys revenue, and what share is it?",
+    "question": "Which region contributes the most to Infosys revenue in fiscal 2026, and what share is it?",
     "type": "table",
     "answerable": true,
     "expected_sources": [
       "infosys-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 10
+      }
+    ],
+    "must_contain": [
+      "North America",
+      "56.1"
+    ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "Checked against extracted PDF text only (not visually). Revenue by geography 2025-26: North America 56.1%. PDF page needs a lookup.",
     "human_verified": false,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q34",
-    "question": "Who is TCS's statutory auditor?",
+    "question": "Which firm is TCS's current statutory auditor?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "tcs-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 40
+      },
+      {
+        "source": "tcs-ar-26",
+        "page": 68
+      }
+    ],
+    "must_contain": [
+      "B S R|BSR"
+    ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). B S R & Co. LLP (term to 2027 AGM). Walker Chandiok & Co LLP is only RECOMMENDED for the next term; a good answer may mention it. Note spaced letters in the extracted text. Pages inferred from text order (Board's Report; Information at a glance); confirm in viewer.",
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q35",
-    "question": "Who is Infosys's statutory auditor?",
+    "question": "Which firm is Infosys's current statutory auditor?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
       "infosys-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "infosys-ar-26",
+        "page": 43
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 44
+      }
+    ],
+    "must_contain": [
+      "Deloitte"
+    ],
     "must_not_contain": [],
-    "notes": "",
-    "human_verified": false,
+    "notes": "Checked against extracted PDF text only (not visually). Deloitte Haskins & Sells LLP (term to 2027 AGM). BSR & Co. LLP is only PROPOSED for the next term. Pages inferred from text order; confirm in viewer.",
+    "human_verified": true,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q36",
@@ -727,13 +890,29 @@
       "tcs-ar-26",
       "infosys-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 25
+      },
+      {
+        "source": "tcs-ar-26",
+        "page": 108
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 10
+      }
+    ],
+    "must_contain": [
+      "584,519|5,84,519",
+      "3,28,594|328,594"
+    ],
     "must_not_contain": [],
-    "notes": "",
+    "notes": "TCS permanent 584,519 vs Infosys 328,594 -> difference 255,925. Using TCS total 617,437 gives 288,843. A good answer states which TCS figure it uses. Pages: reuse q01/q23 after lookup.",
     "human_verified": false,
     "split": "test",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q37",
@@ -744,16 +923,33 @@
       "tcs-ar-26",
       "infosys-ar-26"
     ],
-    "expected_pages": [],
+    "expected_pages": [
+      {
+        "source": "tcs-ar-26",
+        "page": 24
+      },
+      {
+        "source": "tcs-ar-26",
+        "page": 58
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 16
+      },
+      {
+        "source": "infosys-ar-26",
+        "page": 26
+      }
+    ],
     "must_contain": [
       "25.0",
       "21.0"
     ],
     "must_not_contain": [],
-    "notes": "Adjusted margin for Infosys: a good answer should say 'adjusted'.",
+    "notes": "Checked against extracted PDF text only (not visually). TCS 25.0% is EBIT before other income; Infosys 21.0% is the ADJUSTED operating margin. Pages: reuse q13/q19 after lookup.",
     "human_verified": false,
     "split": "dev",
-    "status": "draft_needs_fill"
+    "status": "ready_unverified"
   },
   {
     "id": "q38",

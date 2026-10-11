@@ -7,17 +7,17 @@ The evaluation harness measures retrieval, answer quality, repeat stability, and
 ## 1. Dev / Test Split Rule & Draft / Verified Lifecycle
 
 ### A. Dev / Test Split Rule (`split: "dev" | "test"`)
-Every question in `data/eval/golden_questions.json` carries a `split` field (`"dev"` or `"test"`, defaulting to `"dev"`), and `scripts/run_eval.py` accepts `--split dev|test|all` (default `"dev"`). Across the 40-question set, `30` questions are in `dev` (`16` `ready_unverified`, `14` `draft_needs_fill`) and `10` are in `test` (`6` `ready_unverified`, `4` `draft_needs_fill`):
+Every question in `data/eval/golden_questions.json` carries a `split` field (`"dev"` or `"test"`, defaulting to `"dev"`), and `scripts/run_eval.py` accepts `--split dev|test|all` (default `"dev"`). Across the 40-question set, `30` questions are in `dev` (`29` ready, `1` `draft_needs_fill`) and `10` are in `test` (`10` ready, `0` `draft_needs_fill`):
 
 - **Tune on `dev`, run `test` only for final numbers**: All prompt engineering, chunking adjustments, score thresholds, and retrieval experiments must be iterated and evaluated on `--split dev`. The `--split test` partition is a held-out benchmark run only at the end of a milestone to verify that improvements generalize rather than overfitting to the `dev` questions.
 
 ### B. Question Lifecycle (`status` and `human_verified`)
 Each question progresses through three lifecycle stages via `status` (`"draft_needs_fill" | "ready_unverified" | "verified"`) and `human_verified` (`bool`):
-1. **`draft_needs_fill` (`human_verified = false`)**: Question text and target sources are defined, but `expected_pages` and/or `must_contain` answers are still empty (`18` questions in v1).
+1. **`draft_needs_fill` (`human_verified = false`)**: Question text and target sources are defined, but `expected_pages` and/or `must_contain` answers are still empty (`1` question in the corrected set: `q27`).
    - **Excluded by default**: Scored runs (`scripts/run_eval.py`) automatically exclude `status == "draft_needs_fill"` questions unless `--include-drafts` is explicitly passed, and the report states how many draft questions were skipped and why.
-   - **Candidate inspection (`scripts/show_candidates.py`)**: Use the read-only helper `uv run python scripts/show_candidates.py` (or `--ids q13,q14`) to inspect the top-6 retrieved chunks in gitignored `data/eval/runs/candidates_<timestamp>.md`. **Candidates are pointers only—expected pages and answers must be confirmed in the original PDF, never copied blindly from chunk text.**
-2. **`ready_unverified` (`human_verified = false`)**: `expected_pages` and `must_contain` are populated (`22` questions in v1) and included in scored engineering runs, but have not yet been audited directly against the source PDF.
-3. **`verified` (`human_verified = true`)**: Expected PDF pages, figures, units, and acceptable spellings have been manually verified against the official annual report PDF.
+   - **Candidate inspection & PDF page lookup (`scripts/show_candidates.py`, `scripts/find_pages.py`)**: Use the read-only helpers `uv run python scripts/show_candidates.py` (top-6 retrieved chunks) and `uv run python scripts/find_pages.py` (direct PyMuPDF token search over `data/raw/*.pdf`), which write to gitignored `data/eval/runs/candidates_<timestamp>.md` and `data/eval/runs/page_lookup_<timestamp>.md`. **Candidates are pointers only—expected pages and answers must be confirmed in the original PDF, never copied blindly from chunk text.**
+2. **`ready_unverified` (`human_verified = false`)**: `expected_pages` and `must_contain` are populated and included in scored engineering runs, pending full manual PDF audit.
+3. **`verified` (`human_verified = true`)**: Expected PDF pages, figures, units, and acceptable spellings have been manually verified against the official annual report PDF (`12` questions verified so far).
 
 > [!IMPORTANT]
 > **Headline Numbers Rule**: Unverified questions (`human_verified = false`) must **not** be used for headline benchmark numbers. Reports automatically emit a `PRELIMINARY RESULTS` warning whenever fewer than 30 questions are evaluated or any evaluated question has `human_verified=false`.

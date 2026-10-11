@@ -179,9 +179,9 @@ The repository includes a deterministic + LLM-as-a-judge evaluation harness (`sr
 
 > [!IMPORTANT]
 > **Split Rule & Draft/Verified Lifecycle**:
-> - **Split Rule**: Tune retrieval, prompts, and thresholds on `--split dev` (`30` questions; `16` ready, `14` draft); run `--split test` (`10` questions; `6` ready, `4` draft) only for final milestone numbers.
-> - **Draft Exclusion**: Questions with `status: "draft_needs_fill"` (`18` of `40`, where expected pages and/or answers are not yet filled) are **excluded from scored runs by default** (override with `--include-drafts`).
-> - **Verification Rule**: Questions with `human_verified: false` (currently all `40` questions: `22` `ready_unverified` + `18` `draft_needs_fill`) must **not** be used for headline numbers until manually verified against the source PDFs. See [`docs/06-evaluation.md`](docs/06-evaluation.md) for full details.
+> - **Split Rule**: Tune retrieval, prompts, and thresholds on `--split dev` (`30` questions; `29` ready, `1` draft); run `--split test` (`10` questions; `10` ready, `0` draft) only for final milestone numbers.
+> - **Draft Exclusion**: Questions with `status: "draft_needs_fill"` (`1` of `40` — `q27`, where expected pages/answers are not in the corpus) are **excluded from scored runs by default** (override with `--include-drafts`).
+> - **Verification Rule**: Questions with `human_verified: false` (currently `28` of `40` questions; `12` are `human_verified: true`) must **not** be used for headline numbers until manually verified against the source PDFs. See [`docs/06-evaluation.md`](docs/06-evaluation.md) for full details.
 
 ### Running the Evaluation Harness
 
@@ -189,10 +189,10 @@ The repository includes a deterministic + LLM-as-a-judge evaluation harness (`sr
    ```powershell
    uv run python scripts/run_eval.py --validate-only
    ```
-2. **Inspect top-6 retrieved candidate chunks for `draft_needs_fill` questions (read-only, zero API calls, saved to gitignored `data/eval/runs/candidates_<timestamp>.md`)**:
+2. **Inspect top-6 retrieved candidate chunks or search raw source PDFs for `must_contain` tokens (read-only, zero API calls, saved to gitignored `data/eval/runs/`)**:
    ```powershell
    uv run python scripts/show_candidates.py
-   uv run python scripts/show_candidates.py --ids q13,q14
+   uv run python scripts/find_pages.py --ids q01-q09 q16-q21
    ```
 3. **Run synthetic judge calibration (`ExampleCo` cases, 6 Gemini calls)**:
    ```powershell

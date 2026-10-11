@@ -47,6 +47,12 @@ from annual_report_rag.providers.base import (
 from annual_report_rag.providers.fake import FakeProvider
 from annual_report_rag.retrieval.retriever import RetrievedChunk
 from annual_report_rag.retrieval.store import ChromaStore
+from scripts.find_pages import (
+    page_matches_token,
+)
+from scripts.find_pages import (
+    parse_id_filter as parse_lookup_ids,
+)
 from scripts.run_judge_calibration import run_calibration
 from scripts.show_candidates import (
     CANDIDATES_HEADER,
@@ -269,18 +275,28 @@ def test_golden_set_validator_and_seed_file(tmp_path: Path) -> None:
     """Verifies Pydantic golden set validation rules, 40-question golden_questions.json, and raw draft v1 loader."""
     seeds = load_golden_set("data/eval/golden_questions.json")
     assert len(seeds) == 40
-    assert all(q.human_verified is False for q in seeds)
     assert sum(1 for q in seeds if q.split == "dev") == 30
     assert sum(1 for q in seeds if q.split == "test") == 10
-    assert sum(1 for q in seeds if q.status == "ready_unverified") == 22
-    assert sum(1 for q in seeds if q.status == "draft_needs_fill") == 18
+    assert sum(1 for q in seeds if q.status == "ready_unverified") == 39
+    assert sum(1 for q in seeds if q.status == "draft_needs_fill") == 1
+    assert sum(1 for q in seeds if q.human_verified) == 12
 
-    # Also verify loader accepts the neutral draft schema directly
+    # Verify loader accepts the neutral draft schema directly
     draft_raw = load_golden_set("data/eval/drafts/golden_questions_draft_v1.json")
     assert len(draft_raw) == 40
+    assert all(q.human_verified is False for q in draft_raw)
+    assert sum(1 for q in draft_raw if q.status == "ready_unverified") == 22
+    assert sum(1 for q in draft_raw if q.status == "draft_needs_fill") == 18
     assert draft_raw[0].must_contain == ["584,519|5,84,519"]
     assert satisfies_must_contain("TCS has 5,84,519 permanent employees.", draft_raw[0].must_contain)
     assert satisfies_must_contain("TCS has 584,519 permanent employees.", draft_raw[0].must_contain)
+
+    # Verify find_pages token matching (Indian grouping, alternatives, TCS spaced digits)
+    assert parse_lookup_ids(["q25", "q31-q33"]) == ["q25", "q31", "q32", "q33"]
+    assert page_matches_token("Employees: 584, 51 9 in FY26", "584,519|5,84,519", "tcs-ar-26") is True
+    assert page_matches_token("Revenue: 1,78,650 crore", "178,650", "infosys-ar-26") is True
+    assert page_matches_token("Auditor: B S R & Co. LLP", "B S R|BSR", "tcs-ar-26") is True
+    assert page_matches_token("Margin was 48.6%", "48", "infosys-ar-26") is False
 
     # Duplicate IDs must fail
     with pytest.raises(ValidationError, match="Duplicate question IDs"):
@@ -339,7 +355,7 @@ def test_golden_set_validator_and_seed_file(tmp_path: Path) -> None:
     store = ChromaStore(persist_path=str(tmp_path / "warn_chroma"), collection_name="w_col")
     with pytest.warns(UserWarning, match="has no chunks in the vector store"):
         warns = check_expected_pages_in_store(seeds[:1], store)
-    assert len(warns) == 2
+    assert len(warns) == len(seeds[0].expected_pages)
 
 
 def test_draft_exclusion_and_show_candidates_read_only(
