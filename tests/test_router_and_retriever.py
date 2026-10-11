@@ -177,3 +177,83 @@ def test_retriever_single_two_source_global_and_min_score(tmp_path: Path) -> Non
     )
     assert len(filtered) == 1
     assert filtered[0].chunk_id == "tcs-p10-c0"
+
+
+def test_retriever_query_prefix_and_max_chunks_per_page(tmp_path: Path) -> None:
+    """Verifies that retrieval.query_prefix prepends to the embedded query and max_chunks_per_page caps chunks per page."""
+    from dataclasses import replace
+
+    db_path = str(tmp_path / "retriever_cap_chroma")
+    store = ChromaStore(persist_path=db_path, collection_name="cap_col")
+    embedder = FakeProvider(embedding_dim=4)
+    base_settings = _build_test_settings(min_score=0.0, top_k=3)
+
+    # Add 3 chunks on page 24 and 1 chunk on page 8 for TCS
+    chunks = [
+        Chunk(
+            id="tcs-p24-c0",
+            text="Page 24 chunk 0",
+            source="tcs-ar-26",
+            page=24,
+            chunk_index=0,
+        ),
+        Chunk(
+            id="tcs-p24-c1",
+            text="Page 24 chunk 1",
+            source="tcs-ar-26",
+            page=24,
+            chunk_index=1,
+        ),
+        Chunk(
+            id="tcs-p24-c2",
+            text="Page 24 chunk 2",
+            source="tcs-ar-26",
+            page=24,
+            chunk_index=2,
+        ),
+        Chunk(
+            id="tcs-p8-c0",
+            text="Page 8 chunk 0",
+            source="tcs-ar-26",
+            page=8,
+            chunk_index=0,
+        ),
+    ]
+    q_text = "What was TCS revenue growth?"
+    q_vec = embedder.embed([q_text], purpose="query")[0]
+    v0 = list(q_vec)
+    v1 = [q_vec[0] * 0.99, q_vec[1], q_vec[2], q_vec[3]]
+    v2 = [q_vec[0] * 0.95, q_vec[1], q_vec[2], q_vec[3]]
+    v3 = [q_vec[0] * 0.80, q_vec[1], q_vec[2], -q_vec[3] * 0.1]
+    store.add_chunks(chunks, [v0, v1, v2, v3])
+
+    # Without page cap: top 3 are all from page 24
+    uncapped = retrieve(q_text, embedder, store, base_settings)
+    assert [c.page for c in uncapped] == [24, 24, 24]
+
+    # With max_chunks_per_page=2: at most 2 from page 24, so page 8 enters top 3
+    capped_settings = replace(
+        base_settings,
+        retrieval=replace(base_settings.retrieval, max_chunks_per_page=2),
+    )
+    capped = retrieve(q_text, embedder, store, capped_settings)
+    assert [c.page for c in capped] == [24, 24, 8]
+    assert capped[2].chunk_id == "tcs-p8-c0"
+
+    # With query_prefix: verify prefix is prepended before calling embedder.embed
+    recorded_texts: list[str] = []
+
+    class RecordingEmbedder(FakeProvider):
+        def embed(self, texts: list[str], purpose: str = "document") -> list[list[float]]:
+            recorded_texts.extend(texts)
+            return super().embed(texts, purpose=purpose)
+
+    rec_embedder = RecordingEmbedder(embedding_dim=4)
+    prefix = "Represent this sentence for searching relevant passages: "
+    prefixed_settings = replace(
+        base_settings,
+        retrieval=replace(base_settings.retrieval, query_prefix=prefix),
+    )
+    retrieve(q_text, rec_embedder, store, prefixed_settings)
+    assert recorded_texts == [f"{prefix}{q_text}"]
+

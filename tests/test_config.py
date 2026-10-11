@@ -46,6 +46,8 @@ def test_load_default_settings() -> None:
     assert settings.retrieval.top_k == 6
     assert settings.retrieval.min_score == 0.0
     assert settings.retrieval.max_question_chars == 1000
+    assert settings.retrieval.query_prefix is None
+    assert settings.retrieval.max_chunks_per_page is None
     assert settings.api.cors_origins == ("http://localhost:8501",)
     assert "tcs-ar-26" in settings.sources
     assert settings.sources["tcs-ar-26"].display_name == "TCS Integrated Annual Report 2025-26"

@@ -29,6 +29,8 @@ retrieval:
   top_k: 6                      # Number of top relevant chunks to retrieve (per company when multiple sources match)
   min_score: 0.0                # Minimum cosine similarity score threshold (0.0 = off, calibrated by eval later)
   max_question_chars: 1000      # Maximum allowed question length in characters after whitespace stripping
+  query_prefix: null            # Optional instruction prefix prepended to queries before embedding (null = off)
+  max_chunks_per_page: null     # Optional per-(source, page) chunk cap fetching 4x top_k candidates (null = off)
 
 # FastAPI server settings
 api:
@@ -70,6 +72,6 @@ quality:
 # Evaluation harness and token pricing settings (fill from official Google pricing page; null = omit cost)
 evaluation:
   golden_set_path: "data/eval/golden_questions.json"
-  price_per_million_input_usd: null
-  price_per_million_output_usd: null
+  price_per_million_input_usd: 0.30
+  price_per_million_output_usd: 2.50
 

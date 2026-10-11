@@ -568,4 +568,35 @@ Evaluated the corrected `dev` split (`29` ready questions out of `30`; `q27` ski
 6. **Stored-Chunk Diagnostic on `tcs-ar-26` Pages 8, 25, and 36**:
    - Verified that `110` exists in `tcs-ar-26-p36-c0` (`Total 110 39,7 99. 0`), `19.8%` (and `8.8%`) exists in `tcs-ar-26-p8-c7` (`with the Net M argin of 19.8%`), and `13.7%` exists in `tcs-ar-26-p25-c0` (`Voluntary LTM Attrition in IT services 13.7%`). Thus `q03`, `q05`, `q14`, and `q26` are pure retrieval/crowding misses rather than missing index text.
 
+---
 
+## Phase 5a: Retrieval Experiments on the `dev` Split Against `baseline-v2`
+
+### Goal & Constraints
+Test whether cheap retrieval configuration switches—without re-ingesting documents, changing prompts, or altering the golden set or scorer—recover the four `dev` failures where the answer token exists in the Chroma index (`q03`, `q05`, `q14`, `q26`). Default configuration switches (`retrieval.query_prefix: null`, `retrieval.max_chunks_per_page: null`, `retrieval.top_k: 6`) preserve `baseline-v2` behavior bit-for-bit.
+
+### What We Tried (Retrieval-Only Sweep on 29 `dev` Questions, 25 Answerable)
+1. **Experiment A (`retrieval.query_prefix`)**:
+   - **Audit of `fastembed` (`BAAI/bge-base-en-v1.5`)**: Inspected `fastembed.text.onnx_embedding.OnnxTextEmbedding` and `TextEmbeddingBase.query_embed`. `OnnxTextEmbedding` does **not** override `query_embed` or `passage_embed`; both call `self.embed(...)` directly with zero prefix (`np.allclose(query_embed, passage_embed) == True`, max diff `0.00e+00`).
+   - Added `retrieval.query_prefix` (`null` by default) and tested BAAI's instruction prefix `"Represent this sentence for searching relevant passages: "`.
+   - **Result**: `page_hit@1` rose (`0.4800 -> 0.5600`), `page_hit@6` rose (`0.8400 -> 0.8800`, promoting `q29`), and `MRR` rose (`0.6480 -> 0.6880`, moving `q03`'s `p36-c1` from rank 2 to rank 1), but `text_hit_any@1` (`0.6000 -> 0.5200`) and `text_hit_all@1` (`0.5600 -> 0.4800`) regressed (`q17` and `q31` lost rank-1 text hits), `distinct_pages@6` dropped (`5.00 -> 4.88`), and `text_hit_all@6` stayed flat (`0.8400`) without recovering any of `q03`, `q05`, `q14`, or `q26`.
+2. **Experiment B (`retrieval.max_chunks_per_page: 2`, `top_k: 6`)**:
+   - Fetches `4 * top_k` (`24`) candidates from the vector store, keeps at most `2` chunks per `(source, page)` in descending score order, and returns `top_k` (`6`).
+   - **Result**: `page_hit@6` rose (`0.8400 -> 0.8800`), `MRR` rose (`0.6480 -> 0.6547`), and `distinct_pages@6` improved from `5.00` to `5.36`. On **`q14`**, capping page 24 at 2 chunks (down from 4 in `baseline-v2`) promoted `tcs-ar-26-p36-c1` (`8.8%` profit growth) to rank 5 and `tcs-ar-26-p58-c3` (expected page 58) to rank 6 (`page_hit@6: False -> True`, `text_hit_all@6: False -> True`). However, on **`q22`** (already `FALSE_REFUSAL` in `baseline-v2`), capping page 24 at 2 chunks dropped the 3rd chunk from page 24 (`tcs-ar-26-p24-c2`, rank 5 in `baseline-v2`, which holds `66,838`), regressing `q22`'s `text_hit_all@6` (`True -> False`) and leaving aggregate `text_hit_all@6` unchanged at `0.8400`.
+3. **Experiment C (`retrieval.top_k: 8` and `10`, no page cap)**:
+   - At the fixed `@6` cutoff, single-source top-6 rankings are identical to `baseline-v2`, while `MRR` rises to `0.6530` (`top_k=8`, `q14` hit at rank 8) and `0.6574` (`top_k=10`, `q14` at rank 8 and `q29` at rank 9) with **zero retrieval regressions**.
+   - Evaluated across the full retrieved window (`@k` where `k = top_k`), `top_k=8` achieves `page_hit@8 = 0.8800`, `text_hit_any@8 = 0.8800`, `text_hit_all@8 = 0.8800` (`+0.0400`), and `distinct_pages@8 = 6.76` because `q14` retrieves `tcs-ar-26-p36-c1` at rank 7 and `tcs-ar-26-p58-c3` at rank 8 while `q22` retains `tcs-ar-26-p24-c2` at rank 5.
+4. **Experiment D (`query_prefix` + `max_chunks_per_page: 2`, `top_k: 6`)**:
+   - Combined the `page_hit@6` gains of A and B (`0.9200`, `MRR = 0.6960`) but also combined both sets of regressions (`text_hit_all@1 = 0.4800`, plus `q22` `text_hit_all@6: True -> False`), leaving `text_hit_all@6` flat at `0.8400`.
+
+### Full-Generation Runs (`--judge` on 29 `dev` Questions)
+We ran full generation with the LLM judge on the two cleanest retrieval configs—`exp5a-pagecap2` (`max_chunks_per_page=2, top_k=6`) and `exp5a-topk8` (`top_k=8, max_chunks_per_page=null`):
+- **`exp5a-pagecap2` (`20261011T134758Z_exp5a-pagecap2`)**: `CORRECT = 19`, `WRONG = 1`, `FALSE_REFUSAL = 5`, `CORRECT_REFUSAL = 4`, `ANSWERED_ANYWAY = 0` (`0` outcome changes vs `baseline-v2`), `faithfulness_rate = 1.0000` (`20/20`), `citation_precision = 1.0000` (`37/37`), `avg_cost_per_query_usd = $0.000687`. Even though `q14` retrieved `tcs-ar-26-p36-c1` (`8.8%`) at rank 5, the generator still refused `q14` because `p36-c1` is a `degraded` chunk where the parenthetical `"(excluding exceptional items)"` was stripped by the corrupted-glyph filter, and `p58-c3` (rank 6) covers revenue growth rather than the PAT table.
+- **`exp5a-topk8` (`20261011T135451Z_exp5a-topk8`)**: `CORRECT = 20 (+1)`, `WRONG = 1`, `FALSE_REFUSAL = 4 (-1)`, `CORRECT_REFUSAL = 4`, `ANSWERED_ANYWAY = 0`, `faithfulness_rate = 1.0000` (`19/19`), `citation_precision = 1.0000` (`32/32`), `avg_cost_per_query_usd = $0.000888` (`+$0.000197`/query vs `baseline-v2`). `q22` improved from `FALSE_REFUSAL` to `CORRECT` (stochastic LLM generation variance at `temperature=1.0` accepting *"operating profit of ₹66,838 crore [5]"* for *"operating income"*), while `q14` remained `FALSE_REFUSAL` for the same degraded-text reason on `p36-c1`.
+
+### What Was Learned (Why Cheap Retrieval Knobs Alone Do Not Recover `q03`, `q05`, `q14`, `q26`)
+Checking the exact cosine-similarity ranks of the target answer chunks across all 1,683 indexed chunks explains why top-$k$ and page-cap tweaks only reach `q14`:
+- **`q14` (`tcs-ar-26-p36-c1` at rank 7, `p58-c3` at rank 8)**: Near-miss caused by 4 chunks of page 24 crowding ranks 1–4. Recovered in retrieval by both `max_chunks_per_page=2` and `top_k=8`, but still blocked at generation because `p36-c1` lost the words `"excluding exceptional items"` during degraded glyph filtering.
+- **`q26` (`tcs-ar-26-p25-c0` at rank 17, `score=0.6426`)**: Infographic callout tile (`"Voluntary LTM Attrition in IT services 13.7%"`) lacks company name (`TCS`) and fiscal year (`2026`) in that chunk, so dense bi-encoder similarity ranks general TCS overview chunks ahead of it.
+- **`q05` (`tcs-ar-26-p8-c7` at rank 100, `score=0.6250`)**: Degraded spaced text (`"with the Net M argin of 19.8%"`) severely depresses dense embedding similarity.
+- **`q03` (`tcs-ar-26-p36-c0` at rank 78, `score=0.6551`)**: Chunk boundary split—`p36-c1` (rank 2, `0.7784`) has the narrative (`"FY 2026 is 11,000% of the paid-up value"`), while the preceding table chunk `p36-c0` (`"Total 110"`) lacks `"TCS"` in prose and ranks 78th.

@@ -76,11 +76,13 @@ class IngestionConfig:
 
 @dataclass(frozen=True)
 class RetrievalConfig:
-    """Holds retrieval search parameters such as top-k results, score threshold, and input limit."""
+    """Holds retrieval search parameters such as top-k results, score threshold, input limit, query prefix, and per-page chunk cap."""
 
     top_k: int = 6
     min_score: float = 0.0
     max_question_chars: int = 1000
+    query_prefix: str | None = None
+    max_chunks_per_page: int | None = None
 
 
 @dataclass(frozen=True)
@@ -217,10 +219,18 @@ def parse_ingestion_config(data: dict[str, Any]) -> IngestionConfig:
 
 def parse_retrieval_config(data: dict[str, Any]) -> RetrievalConfig:
     """Parses retrieval parameters into a typed RetrievalConfig instance."""
+    raw_prefix = data.get("query_prefix")
+    query_prefix = str(raw_prefix) if raw_prefix is not None else None
+    raw_max_per_page = data.get("max_chunks_per_page")
+    max_chunks_per_page = (
+        int(raw_max_per_page) if raw_max_per_page is not None else None
+    )
     return RetrievalConfig(
         top_k=int(data.get("top_k", 6)),
         min_score=float(data.get("min_score", 0.0)),
         max_question_chars=int(data.get("max_question_chars", 1000)),
+        query_prefix=query_prefix,
+        max_chunks_per_page=max_chunks_per_page,
     )
 
 

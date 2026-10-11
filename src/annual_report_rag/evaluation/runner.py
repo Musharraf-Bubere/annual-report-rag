@@ -72,6 +72,12 @@ def compute_settings_hash(settings: Settings) -> str:
     """Computes a SHA-256 hash over all non-secret settings."""
     raw = asdict(settings)
     raw.pop("gemini_api_key", None)
+    ret_dict = raw.get("retrieval")
+    if isinstance(ret_dict, dict):
+        if ret_dict.get("query_prefix") is None:
+            ret_dict.pop("query_prefix", None)
+        if ret_dict.get("max_chunks_per_page") is None:
+            ret_dict.pop("max_chunks_per_page", None)
     serialized = json.dumps(raw, sort_keys=True)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 

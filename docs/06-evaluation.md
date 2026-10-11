@@ -126,3 +126,34 @@ uv run python scripts/run_judge_calibration.py
 3. **Unverified & Draft Questions (`human_verified = false`)**: In `golden_questions.json`, `28` of `40` questions still have `human_verified=false` (`12` are `human_verified=true`; `39` are `ready_unverified` and `1` is `draft_needs_fill`). Unverified questions must not be used for final headline numbers until verified against the source PDFs.
 4. **Weak Lexical Labels & Single Corpus**: Deterministic `must_contain` labels only check token presence, and all current questions come from two FY2025–26 Indian IT services reports (`tcs-ar-26`, `infosys-ar-26`).
 
+---
+
+## 6. Phase 5a Retrieval Experiment Log (`dev` Split vs. `baseline-v2`)
+
+All experiments were evaluated on `--split dev` ($29$ ready questions, $25$ answerable; `q27` skipped as `draft_needs_fill`) against locked `baseline-v2` (`20261011T101238Z_baseline-v2`) with zero re-ingestion, prompt, golden-set, or scorer changes. Both new config switches (`retrieval.query_prefix` and `retrieval.max_chunks_per_page`) default to `null` in `config/settings.yaml` so default runs reproduce `baseline-v2` exactly.
+
+### A. Retrieval-Only Sweep (`--retrieval-only`, 0 API Calls)
+
+| Experiment / Config | `page_hit@1` | `page_hit@3` | `page_hit@6` | `text_hit_any@1` | `text_hit_any@3` | `text_hit_any@6` | `text_hit_all@1` | `text_hit_all@3` | `text_hit_all@6` | `MRR` | `distinct_pages@6` |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **`baseline-v2` (default: `top_k=6`, `prefix=null`, `page_cap=null`)** | `0.4800` | `0.8000` | `0.8400` | `0.6000` | `0.7200` | `0.8400` | `0.5600` | `0.7200` | `0.8400` | `0.6480` | `5.00` |
+| **Exp A (`query_prefix=BGE`, `top_k=6`, `page_cap=null`)** | `0.5600` (`+0.08`) | `0.8000` (`0.00`) | `0.8800` (`+0.04`) | `0.5200` (`-0.08`) | `0.7200` (`0.00`) | `0.8400` (`0.00`) | `0.4800` (`-0.08`) | `0.7200` (`0.00`) | `0.8400` (`0.00`) | `0.6880` (`+0.0400`) | `4.88` (`-0.12`) |
+| **Exp B (`max_chunks_per_page=2`, `top_k=6`, `prefix=null`)** | `0.4800` (`0.00`) | `0.8000` (`0.00`) | `0.8800` (`+0.04`) | `0.6000` (`0.00`) | `0.7200` (`0.00`) | `0.8400` (`0.00`) | `0.5600` (`0.00`) | `0.7200` (`0.00`) | `0.8400` (`0.00`) | `0.6547` (`+0.0067`) | `5.36` (`+0.36`) |
+| **Exp C1 (`top_k=8`, `prefix=null`, `page_cap=null`)** *(at `@6` / at `@8`)* | `0.4800` (`0.00`) | `0.8000` (`0.00`) | `0.8400` (`0.8800` at `@8`) | `0.6000` (`0.00`) | `0.7200` (`0.00`) | `0.8400` (`0.8800` at `@8`) | `0.5600` (`0.00`) | `0.7200` (`0.00`) | `0.8400` (`0.8800` at `@8`) | `0.6530` (`+0.0050`) | `5.00` (`6.76` at `@8`) |
+| **Exp C2 (`top_k=10`, `prefix=null`, `page_cap=null`)** *(at `@6` / at `@10`)* | `0.4800` (`0.00`) | `0.8000` (`0.00`) | `0.8400` (`0.9200` at `@10`) | `0.6000` (`0.00`) | `0.7200` (`0.00`) | `0.8400` (`0.8800` at `@10`) | `0.5600` (`0.00`) | `0.7200` (`0.00`) | `0.8400` (`0.8800` at `@10`) | `0.6574` (`+0.0094`) | `5.00` (`8.41` at `@10`) |
+| **Exp D (`query_prefix=BGE` + `max_chunks_per_page=2`, `top_k=6`)** | `0.5600` (`+0.08`) | `0.8000` (`0.00`) | `0.9200` (`+0.08`) | `0.5200` (`-0.08`) | `0.7200` (`0.00`) | `0.8400` (`0.00`) | `0.4800` (`-0.08`) | `0.7200` (`0.00`) | `0.8400` (`0.00`) | `0.6960` (`+0.0480`) | `5.24` (`+0.24`) |
+
+### B. Full-Generation Runs (`--judge`, 29 `dev` Questions)
+
+| Run Label | Config | `CORRECT` | `WRONG` | `FALSE_REFUSAL` | `CORRECT_REFUSAL` | `ANSWERED_ANYWAY` | `faithfulness_rate` | `citation_precision` | `avg_cost_per_query_usd` | Outcome Changes vs. `baseline-v2` |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **`baseline-v2`** | `top_k=6, page_cap=null` | `19` | `1` | `5` | `4` | `0` | `1.0000` (`20/20`) | `1.0000` (`34/34`) | `$0.000691` | — |
+| **`exp5a-pagecap2`** | `top_k=6, page_cap=2` | `19` | `1` | `5` | `4` | `0` | `1.0000` (`20/20`) | `1.0000` (`37/37`) | `$0.000687` | None (`0` regressions on `CORRECT` questions) |
+| **`exp5a-topk8`** | `top_k=8, page_cap=null` | `20` (`+1`) | `1` | `4` (`-1`) | `4` | `0` | `1.0000` (`19/19`) | `1.0000` (`32/32`) | `$0.000888` | `q22`: `FALSE_REFUSAL -> CORRECT` (`0` regressions on `CORRECT` questions) |
+
+### C. Key Findings
+1. **`fastembed` Query Prefix (`Exp A`)**: `fastembed`'s `OnnxTextEmbedding` does not prepend BAAI's query instruction prefix for `BAAI/bge-base-en-v1.5`. Adding it manually boosts `MRR` (`+0.0400`) and `page_hit@6` (`+0.0400`), but hurts rank-1 text hit (`-0.0800`) and does not recover any of the 4 target misses (`q03`, `q05`, `q14`, `q26`).
+2. **Page Crowding vs. Chunk-Level Detail (`Exp B` vs. `Exp C`)**: `tcs-ar-26` page 24 (6 chunks) crowds the top-6 window on financial queries (`q05`, `q14`, `q22`). Setting `max_chunks_per_page=2` recovers `q14` into the top 6 (`p36-c1` at rank 5, `p58-c3` at rank 6) at zero token cost, but drops the 3rd chunk of page 24 (`p24-c2`, containing `66,838`) on `q22`. Increasing `top_k` to `8` (`exp5a-topk8`) recovers `q14`'s chunks at ranks 7–8 with **zero retrieval regressions** on any question, at a `+$0.000197`/query token cost (+29% input tokens).
+3. **Why `q14` Still Refused in Generation & Why `q03`, `q05`, `q26` Missed Top-10**:
+   - On `q14`, `tcs-ar-26-p36-c1` contains `8.8%`, but because page 36 is `degraded`, the phrase `"(excluding exceptional items)"` was stripped during corrupted-glyph filtering, causing the generator to conservatively refuse.
+   - Full-index rank diagnostics show `q26` (`tcs-ar-26-p25-c0`, attrition callout tile without `"TCS"` or `"2026"` in chunk text) sits at **rank 17**, `q03` (`tcs-ar-26-p36-c0`, dividend table chunk split from narrative chunk `p36-c1`) sits at **rank 78**, and `q05` (`tcs-ar-26-p8-c7`, degraded `"Net M argin"` text) sits at **rank 100**. Recovering those requires lexical/BM25 hybrid search or neighbouring-chunk/table context rather than top-$k$ or page-cap tuning.

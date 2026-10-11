@@ -34,22 +34,54 @@ def _to_retrieved_chunk(hit: QueryResult) -> RetrievedChunk:
     )
 
 
+def _apply_page_cap(
+    hits: list[QueryResult],
+    max_chunks_per_page: int,
+    limit: int,
+) -> list[QueryResult]:
+    """Filters score-ranked hits to keep at most max_chunks_per_page per (source, page), returning up to limit hits."""
+    counts: dict[tuple[str, int], int] = {}
+    kept: list[QueryResult] = []
+    for hit in hits:
+        key = (hit.source, hit.page)
+        current = counts.get(key, 0)
+        if current < max_chunks_per_page:
+            counts[key] = current + 1
+            kept.append(hit)
+            if len(kept) >= limit:
+                break
+    return kept
+
+
 def _query_by_sources(
     store: ChromaStore,
     query_vector: list[float],
     top_k: int,
     target_sources: list[str],
+    max_chunks_per_page: int | None = None,
 ) -> list[QueryResult]:
-    """Queries the store globally, for a single source, or per-source with score ordering."""
+    """Queries the store globally, for a single source, or per-source with score ordering and optional per-page cap."""
+    use_cap = max_chunks_per_page is not None and max_chunks_per_page > 0
+    fetch_k = 4 * top_k if use_cap else top_k
+
     if not target_sources:
-        return store.query(query_vector, top_k=top_k, sources=None)
+        hits = store.query(query_vector, top_k=fetch_k, sources=None)
+        if use_cap and max_chunks_per_page is not None:
+            return _apply_page_cap(hits, max_chunks_per_page, top_k)
+        return hits
 
     if len(target_sources) == 1:
-        return store.query(query_vector, top_k=top_k, sources=[target_sources[0]])
+        hits = store.query(query_vector, top_k=fetch_k, sources=[target_sources[0]])
+        if use_cap and max_chunks_per_page is not None:
+            return _apply_page_cap(hits, max_chunks_per_page, top_k)
+        return hits
 
     combined_hits: list[QueryResult] = []
     for src in target_sources:
-        combined_hits.extend(store.query(query_vector, top_k=top_k, sources=[src]))
+        src_hits = store.query(query_vector, top_k=fetch_k, sources=[src])
+        if use_cap and max_chunks_per_page is not None:
+            src_hits = _apply_page_cap(src_hits, max_chunks_per_page, top_k)
+        combined_hits.extend(src_hits)
 
     combined_hits.sort(key=lambda h: h.score, reverse=True)
     return combined_hits
@@ -88,7 +120,11 @@ def retrieve(
         sources if sources is not None else detect_sources(cleaned_question, settings)
     )
 
-    vectors = embedder.embed([cleaned_question], purpose="query")
+    query_text = cleaned_question
+    if settings.retrieval.query_prefix:
+        query_text = f"{settings.retrieval.query_prefix}{cleaned_question}"
+
+    vectors = embedder.embed([query_text], purpose="query")
     if not vectors:
         return []
 
@@ -97,6 +133,7 @@ def retrieve(
         query_vector=vectors[0],
         top_k=effective_top_k,
         target_sources=target_sources,
+        max_chunks_per_page=settings.retrieval.max_chunks_per_page,
     )
 
     min_score = settings.retrieval.min_score
