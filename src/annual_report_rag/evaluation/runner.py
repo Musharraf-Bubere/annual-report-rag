@@ -241,6 +241,7 @@ def _evaluate_single_question(
             split=q.split,
             repeat_index=repeat_index,
             detected_sources_count=num_sources,
+            status=q.status,
             **r_fields,
         )
         detail = {
@@ -386,6 +387,7 @@ def _evaluate_single_question(
         supporting_citations_count=supporting_cits,
         evaluated_citations_count=evaluated_cits,
         non_supporting_citations=non_supporting_cits,
+        status=q.status,
         **r_fields,
     )
     detail = {
@@ -412,6 +414,8 @@ def _aggregate_summary(
     split: str,
     repeats: int,
     use_judge: bool,
+    include_drafts: bool = False,
+    skipped_draft_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Aggregates retrieval, answer, faithfulness, repeat, performance, slice, and failure metrics without any PDF text."""
     primary_records = [r for r in all_records if r.repeat_index == 0]
@@ -571,11 +575,11 @@ def _aggregate_summary(
     }
 
     by_type: dict[str, Any] = {}
-    for qtype in ("fact", "comparison", "unanswerable", "adversarial"):
+    for qtype in ("fact", "comparison", "table", "unanswerable", "adversarial"):
         sub = [r for r in primary_records if r.type == qtype]
         if not sub:
             continue
-        is_ans_type = qtype in ("fact", "comparison")
+        is_ans_type = qtype in ("fact", "comparison", "table")
         pass_target = "CORRECT" if is_ans_type else "CORRECT_REFUSAL"
         tha6_val = _mean_bool([r.text_hit_any_at_6 for r in sub]) if is_ans_type else None
         by_type[qtype] = {
@@ -615,6 +619,14 @@ def _aggregate_summary(
         "retrieval_only": retrieval_only,
         "split": split,
         "repeats": repeats,
+        "include_drafts": include_drafts,
+        "skipped_draft_count": len(skipped_draft_ids),
+        "skipped_draft_ids": list(skipped_draft_ids),
+        "skipped_draft_reason": (
+            "excluded by default because status='draft_needs_fill' (missing expected answers and/or PDF pages)"
+            if not include_drafts
+            else None
+        ),
         "status": status,
         "store_fingerprint": store_fp,
         "num_questions": len(primary_records),
@@ -646,6 +658,7 @@ def run_eval(
     split: str = "dev",
     repeats: int = 1,
     use_judge: bool = False,
+    include_drafts: bool = False,
     store: ChromaStore | None = None,
     embedder: EmbeddingProvider | None = None,
     generator: GenerationProvider | None = None,
@@ -679,12 +692,21 @@ def run_eval(
         generator=active_generator,
     )
 
-    questions = [
+    split_matched = [
         q
         for q in golden
         if (split == "all" or q.split == split)
         and (only_type is None or q.type == only_type)
     ]
+    if not include_drafts:
+        skipped_draft_ids = [
+            q.id for q in split_matched if q.status == "draft_needs_fill"
+        ]
+        questions = [q for q in split_matched if q.status != "draft_needs_fill"]
+    else:
+        skipped_draft_ids = []
+        questions = split_matched
+
     if limit is not None and limit >= 0:
         questions = questions[:limit]
 
@@ -748,6 +770,8 @@ def run_eval(
         split=split,
         repeats=effective_repeats,
         use_judge=use_judge,
+        include_drafts=include_drafts,
+        skipped_draft_ids=skipped_draft_ids,
     )
     md_report = format_markdown_report(summary)
 

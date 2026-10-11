@@ -71,6 +71,7 @@ class QuestionOutcomeRecord:
     supporting_citations_count: int = 0
     evaluated_citations_count: int = 0
     non_supporting_citations: list[int] = field(default_factory=list)
+    status: str = "ready_unverified"
 
 
 def is_question_failed(rec: QuestionOutcomeRecord, retrieval_only: bool) -> bool:
@@ -97,6 +98,12 @@ def format_markdown_report(summary: dict[str, Any]) -> str:
     repeats = int(summary.get("repeats", 1))
     num_questions = int(summary.get("num_questions", 0))
     all_human_verified = bool(summary.get("all_human_verified", False))
+    include_drafts = bool(summary.get("include_drafts", False))
+    skipped_draft_count = int(summary.get("skipped_draft_count", 0))
+    skipped_draft_reason = summary.get(
+        "skipped_draft_reason",
+        "excluded by default because status='draft_needs_fill' (missing expected answers and/or PDF pages)",
+    )
 
     lines.append(f"# Evaluation Report: `{label}` ({timestamp})")
     lines.append("")
@@ -107,6 +114,12 @@ def format_markdown_report(summary: dict[str, Any]) -> str:
     lines.append(f"- **Repeats**: `{repeats}`")
     lines.append(f"- **Status**: `{status}`")
     lines.append(f"- **Questions evaluated**: `{num_questions}`")
+    if not include_drafts:
+        lines.append(
+            f"- **Skipped draft questions**: `{skipped_draft_count}` ({skipped_draft_reason})"
+        )
+    else:
+        lines.append("- **Include drafts**: `True` (`draft_needs_fill` questions included)")
     lines.append("")
 
     if num_questions < 30 or not all_human_verified:

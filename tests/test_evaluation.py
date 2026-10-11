@@ -48,6 +48,11 @@ from annual_report_rag.providers.fake import FakeProvider
 from annual_report_rag.retrieval.retriever import RetrievedChunk
 from annual_report_rag.retrieval.store import ChromaStore
 from scripts.run_judge_calibration import run_calibration
+from scripts.show_candidates import (
+    CANDIDATES_HEADER,
+    generate_candidates_report,
+    select_candidate_questions,
+)
 from tests.test_router_and_retriever import _build_test_settings
 
 
@@ -261,11 +266,21 @@ def test_judge_calibration_runner_with_scripted_fake() -> None:
 
 
 def test_golden_set_validator_and_seed_file(tmp_path: Path) -> None:
-    """Verifies Pydantic golden set validation rules, split field, and loads the 12 seed questions."""
+    """Verifies Pydantic golden set validation rules, 40-question golden_questions.json, and raw draft v1 loader."""
     seeds = load_golden_set("data/eval/golden_questions.json")
-    assert len(seeds) == 12
+    assert len(seeds) == 40
     assert all(q.human_verified is False for q in seeds)
-    assert all(q.split == "dev" for q in seeds)
+    assert sum(1 for q in seeds if q.split == "dev") == 30
+    assert sum(1 for q in seeds if q.split == "test") == 10
+    assert sum(1 for q in seeds if q.status == "ready_unverified") == 22
+    assert sum(1 for q in seeds if q.status == "draft_needs_fill") == 18
+
+    # Also verify loader accepts the neutral draft schema directly
+    draft_raw = load_golden_set("data/eval/drafts/golden_questions_draft_v1.json")
+    assert len(draft_raw) == 40
+    assert draft_raw[0].must_contain == ["584,519|5,84,519"]
+    assert satisfies_must_contain("TCS has 5,84,519 permanent employees.", draft_raw[0].must_contain)
+    assert satisfies_must_contain("TCS has 584,519 permanent employees.", draft_raw[0].must_contain)
 
     # Duplicate IDs must fail
     with pytest.raises(ValidationError, match="Duplicate question IDs"):
@@ -286,16 +301,29 @@ def test_golden_set_validator_and_seed_file(tmp_path: Path) -> None:
             ]
         )
 
-    # Answerable without expected_pages or must_contain must fail
+    # Answerable with status='ready_unverified' without expected_pages or must_contain must fail
     with pytest.raises(ValidationError, match="expected_pages"):
         GoldenQuestion(
             id="bad1",
             question="Q",
             type="fact",
             answerable=True,
+            status="ready_unverified",
             expected_pages=[],
             must_contain=["100"],
         )
+
+    # Answerable with status='draft_needs_fill' is allowed to have empty expected_pages / must_contain
+    q_draft = GoldenQuestion(
+        id="draft_ok",
+        question="Draft table question?",
+        type="table",
+        answerable=True,
+        status="draft_needs_fill",
+        expected_pages=[],
+        must_contain=[],
+    )
+    assert q_draft.status == "draft_needs_fill"
 
     # Unanswerable with expected_pages must fail
     with pytest.raises(ValidationError, match="no expected_pages"):
@@ -312,6 +340,116 @@ def test_golden_set_validator_and_seed_file(tmp_path: Path) -> None:
     with pytest.warns(UserWarning, match="has no chunks in the vector store"):
         warns = check_expected_pages_in_store(seeds[:1], store)
     assert len(warns) == 2
+
+
+def test_draft_exclusion_and_show_candidates_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies draft_needs_fill exclusion by default, --include-drafts override, and read-only show_candidates."""
+    db_path = str(tmp_path / "cand_chroma")
+    store = ChromaStore(persist_path=db_path, collection_name="cand_col")
+    embedder = FakeProvider(embedding_dim=4)
+    settings = _build_test_settings(min_score=0.0, top_k=2)
+
+    q_ready = GoldenQuestion(
+        id="q01",
+        question="How many employees does TCS have?",
+        type="fact",
+        answerable=True,
+        expected_pages=[ExpectedPage(source="tcs-ar-26", page=25)],
+        must_contain=["584,519"],
+        split="dev",
+        status="ready_unverified",
+    )
+    q_draft = GoldenQuestion(
+        id="q13",
+        question="What was TCS's operating margin in fiscal 2026?",
+        type="fact",
+        answerable=True,
+        expected_sources=["tcs-ar-26"],
+        expected_pages=[],
+        must_contain=["25.0"],
+        split="dev",
+        status="draft_needs_fill",
+    )
+    golden = [q_ready, q_draft]
+
+    vec = embedder.embed([q_ready.question], purpose="query")[0]
+    store.add_chunks(
+        [
+            Chunk(
+                id="tcs-p25-c0",
+                text="TCS headcount was 584,519 and operating margin was 25.0%.",
+                source="tcs-ar-26",
+                page=25,
+                chunk_index=0,
+            )
+        ],
+        [vec],
+    )
+    fp_before = store.fingerprint()
+
+    eval_dir = tmp_path / "eval_draft_test"
+
+    # 1. Default run_eval excludes draft_needs_fill and reports how many were skipped and why
+    out_default = run_eval(
+        golden=golden,
+        settings=settings,
+        label="default-no-drafts",
+        retrieval_only=True,
+        split="dev",
+        store=store,
+        embedder=embedder,
+        eval_dir=eval_dir,
+    )
+    assert out_default.summary["num_questions"] == 1
+    assert out_default.summary["skipped_draft_count"] == 1
+    assert out_default.summary["skipped_draft_ids"] == ["q13"]
+    assert "Skipped draft questions**: `1`" in out_default.markdown_report
+    assert "draft_needs_fill" in out_default.markdown_report
+
+    # 2. include_drafts=True includes draft_needs_fill
+    out_with_drafts = run_eval(
+        golden=golden,
+        settings=settings,
+        label="with-drafts",
+        retrieval_only=True,
+        split="dev",
+        include_drafts=True,
+        store=store,
+        embedder=embedder,
+        eval_dir=eval_dir,
+    )
+    assert out_with_drafts.summary["num_questions"] == 2
+    assert out_with_drafts.summary["skipped_draft_count"] == 0
+
+    # 3. show_candidates is strictly read-only on the vector store
+    def _forbid_write(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("show_candidates must never write to or reset the vector store")
+
+    monkeypatch.setattr(store, "add_chunks", _forbid_write)
+    monkeypatch.setattr(store, "reset", _forbid_write)
+
+    assert [q.id for q in select_candidate_questions(golden)] == ["q13"]
+    assert [q.id for q in select_candidate_questions(golden, target_ids=["q01,q13"])] == [
+        "q01",
+        "q13",
+    ]
+
+    md_text, out_path = generate_candidates_report(
+        golden=golden,
+        settings=settings,
+        store=store,
+        embedder=embedder,
+        eval_dir=eval_dir,
+    )
+    assert out_path.exists()
+    assert out_path.parent.name == "runs"
+    assert out_path.name.startswith("candidates_")
+    assert md_text.startswith(CANDIDATES_HEADER)
+    assert "`q13`" in md_text
+    assert "`q01`" not in md_text
+    assert store.fingerprint() == fp_before
 
 
 def test_runner_split_repeats_judge_caching_and_no_chunk_text_leak(tmp_path: Path) -> None:

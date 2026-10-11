@@ -10,8 +10,11 @@ from pydantic import BaseModel, Field, model_validator
 
 from annual_report_rag.retrieval.store import ChromaStore
 
-QuestionType = Literal["fact", "comparison", "unanswerable", "adversarial"]
+QuestionType = Literal[
+    "fact", "comparison", "table", "unanswerable", "adversarial"
+]
 SplitType = Literal["dev", "test"]
+StatusType = Literal["draft_needs_fill", "ready_unverified", "verified"]
 
 
 class ExpectedPage(BaseModel):
@@ -21,6 +24,57 @@ class ExpectedPage(BaseModel):
     page: int = Field(..., ge=1)
 
 
+def normalize_question_dict(raw: dict[str, object]) -> dict[str, object]:
+    """Maps a neutral draft question dict (expected_pdf_pages, expected_answer_all_of) to GoldenQuestion fields."""
+    data = dict(raw)
+    qtype = str(data.get("type", ""))
+
+    if "answerable" not in data:
+        data["answerable"] = qtype in ("fact", "comparison", "table")
+
+    if "expected_pages" not in data and "expected_pdf_pages" in data:
+        pdf_pages = data.pop("expected_pdf_pages")
+        pages_list: list[dict[str, object]] = []
+        if isinstance(pdf_pages, dict):
+            for src, page_nums in pdf_pages.items():
+                if isinstance(page_nums, list):
+                    for p in page_nums:
+                        pages_list.append({"source": str(src), "page": int(p)})
+        data["expected_pages"] = pages_list
+    else:
+        data.pop("expected_pdf_pages", None)
+
+    if "must_contain" not in data and "expected_answer_all_of" in data:
+        all_of = data.pop("expected_answer_all_of")
+        must_contain: list[str] = []
+        if isinstance(all_of, list):
+            for group in all_of:
+                if isinstance(group, list):
+                    cleaned = [str(item).strip() for item in group if str(item).strip()]
+                    if cleaned:
+                        must_contain.append("|".join(cleaned))
+                elif isinstance(group, str) and group.strip():
+                    must_contain.append(group.strip())
+        data["must_contain"] = must_contain
+    else:
+        data.pop("expected_answer_all_of", None)
+
+    data.pop("expected_refusal", None)
+
+    if "expected_sources" not in data or not data["expected_sources"]:
+        ep_list = data.get("expected_pages", [])
+        if isinstance(ep_list, list):
+            inferred: list[str] = []
+            for ep in ep_list:
+                src = ep.get("source") if isinstance(ep, dict) else getattr(ep, "source", None)
+                if isinstance(src, str) and src and src not in inferred:
+                    inferred.append(src)
+            if inferred:
+                data["expected_sources"] = inferred
+
+    return data
+
+
 class GoldenQuestion(BaseModel):
     """Represents a single evaluation question with expected provenance and lexical checks."""
 
@@ -28,17 +82,27 @@ class GoldenQuestion(BaseModel):
     question: str = Field(..., min_length=1)
     type: QuestionType
     answerable: bool
+    expected_sources: list[str] = Field(default_factory=list)
     expected_pages: list[ExpectedPage] = Field(default_factory=list)
     must_contain: list[str] = Field(default_factory=list)
     must_not_contain: list[str] = Field(default_factory=list)
     notes: str = ""
     human_verified: bool = False
     split: SplitType = "dev"
+    status: StatusType = "ready_unverified"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_draft_fields(cls, values: object) -> object:
+        """Normalizes neutral draft schema fields into GoldenQuestion fields before validation."""
+        if isinstance(values, dict):
+            return normalize_question_dict(values)
+        return values
 
     @model_validator(mode="after")
     def validate_question_rules(self) -> "GoldenQuestion":
-        """Enforces invariants for answerable vs unanswerable/adversarial questions."""
-        if self.type in ("fact", "comparison") and not self.answerable:
+        """Enforces invariants for answerable vs unanswerable/adversarial and draft vs ready questions."""
+        if self.type in ("fact", "comparison", "table") and not self.answerable:
             raise ValueError(
                 f"Question '{self.id}' of type '{self.type}' must have answerable=True."
             )
@@ -47,15 +111,21 @@ class GoldenQuestion(BaseModel):
                 f"Question '{self.id}' of type '{self.type}' must have answerable=False."
             )
 
+        if self.status == "draft_needs_fill" and self.human_verified:
+            raise ValueError(
+                f"Question '{self.id}' with status='draft_needs_fill' cannot have human_verified=True."
+            )
+
         if self.answerable:
-            if not self.expected_pages:
-                raise ValueError(
-                    f"Answerable question '{self.id}' must specify at least one expected_pages entry."
-                )
-            if not self.must_contain:
-                raise ValueError(
-                    f"Answerable question '{self.id}' must specify at least one must_contain entry."
-                )
+            if self.status != "draft_needs_fill":
+                if not self.expected_pages:
+                    raise ValueError(
+                        f"Answerable question '{self.id}' (status='{self.status}') must specify at least one expected_pages entry."
+                    )
+                if not self.must_contain:
+                    raise ValueError(
+                        f"Answerable question '{self.id}' (status='{self.status}') must specify at least one must_contain entry."
+                    )
         else:
             if self.expected_pages:
                 raise ValueError(

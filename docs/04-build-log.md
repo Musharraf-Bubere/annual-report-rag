@@ -502,3 +502,31 @@ Phase 4a gave us deterministic retrieval and lexical/numeric outcome metrics (`b
   - **`flip_rate = 0.0000`**: Every single question produced the exact same deterministic outcome across all 3 repeats (`q01` `CORRECT` x3, `q02` `CORRECT` x3, `q03` `WRONG` x3, `q04` `FALSE_REFUSAL` x3, `q05` `FALSE_REFUSAL` x3, `q06` `CORRECT` x3).
   - **`accuracy = 0.5000 (0.5000–0.5000)`** across repeats on `q01`–`q06`.
   - **Latency ($n=18$)**: `generate_ms p50 = 1203.94 ms`, `p95 = 21973.48 ms`, `max = 46245.92 ms` (one call encountered a per-minute 429 rate-limit sleep of ~44s before succeeding, illustrating why reporting `max` and `(n=18)` alongside `p95` is essential).
+
+---
+
+## Phase 4c: 40-Question Draft Golden Set, Draft Exclusion, and Read-Only Candidate Helper
+
+### The problem this phase solves
+A 12-question seed set is too small for statistically meaningful evaluation slices or a held-out `test` split. However, expanding the golden set to 40 questions (`q01`–`q40` in `data/eval/drafts/golden_questions_draft_v1.json`) introduces 18 draft questions (`status = "draft_needs_fill"`) whose expected PDF pages and/or expected answers have not yet been verified in the source PDFs. Scoring incomplete draft questions would distort benchmark metrics, while guessing answers from chunk text would violate benchmark integrity.
+
+### What we built
+1. **Schema Mapping & `GoldenQuestion` Extension (`evaluation/golden.py`, `data/eval/golden_questions.json`)**:
+   - Extended `QuestionType` with `"table"` (`q32`, `q33`) and added `status: Literal["draft_needs_fill", "ready_unverified", "verified"] = "ready_unverified"` and `expected_sources: list[str]` to `GoldenQuestion`.
+   - Added `normalize_question_dict()` as a `mode="before"` validator so `GoldenQuestion` and `load_golden_set()` seamlessly accept both our canonical schema and the neutral draft schema (`expected_pdf_pages` $\to$ `expected_pages`, `expected_answer_all_of` inner lists joined with `"|"` $\to$ `must_contain`).
+   - Enforced strict validation: `ready_unverified` and `verified` answerable questions require non-empty `expected_pages` and `must_contain`, whereas `draft_needs_fill` allows empty `expected_pages` / `must_contain` (and forbids `human_verified=True`).
+   - Mapped all 40 questions from `data/eval/drafts/golden_questions_draft_v1.json` into `data/eval/golden_questions.json` (`30` `dev`, `10` `test`; `22` `ready_unverified`, `18` `draft_needs_fill`; all `40` `human_verified=false`).
+2. **Rewordings and Split Updates in `q01`–`q12` (Replacing Old Seeds)**:
+   - **`q01`**: Added explicit Indian comma spelling `"5,84,519"` alongside `"584,519"` (`must_contain: ["584,519|5,84,519"]`).
+   - **`q02` (reworded)**: `"What was TCS's consolidated revenue in fiscal 2026 and its growth?"` $\to$ **`"What was TCS's consolidated revenue in fiscal 2026 and how much did it grow?"`**
+   - **`q04` (split changed)**: Moved from `split="dev"` to **`split="test"`**.
+   - **`q05` (reworded)**: `"What is TCS's net profit margin?"` $\to$ **`"What was TCS's net profit margin?"`**
+   - **`q07` (reworded)**: `"What is Infosys's revenue growth for fiscal 2026?"` $\to$ **`"How much did Infosys revenue grow in fiscal 2026?"`**
+   - **`q08` (split changed)**: Moved from `split="dev"` to **`split="test"`**.
+   - **`q12` (split changed)**: Moved from `split="dev"` to **`split="test"`**.
+3. **Default Exclusion of `draft_needs_fill` (`evaluation/runner.py`, `evaluation/reporting.py`, `scripts/run_eval.py`)**:
+   - `run_eval()` excludes `status == "draft_needs_fill"` questions by default (`include_drafts=False`), recording `skipped_draft_count`, `skipped_draft_ids`, and `skipped_draft_reason` in both the JSON summary and the Markdown report header.
+   - Added `--include-drafts` to `scripts/run_eval.py`, and updated `--validate-only` to report total (`40`), `dev`/`test` (`30`/`10`), and `ready_unverified`/`draft_needs_fill` (`22`/`18`) counts.
+4. **Read-Only Candidate Helper (`scripts/show_candidates.py`)**:
+   - Runs retrieval only (zero LLM calls, zero vector store writes) for all `draft_needs_fill` questions (or specific IDs via `--ids`), displaying the top 6 chunks (`rank`, `source`, `PDF page`, `text_quality`, `score`, and first ~400 chars) and saving to gitignored `data/eval/runs/candidates_<timestamp>.md` with the header:
+     `"Candidates only. Answers must be confirmed in the PDF, not copied from chunk text."`

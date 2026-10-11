@@ -1,14 +1,26 @@
-# Evaluation Harness (Phase 4a & 4b — Deterministic Metrics, Repeats, and LLM Faithfulness Judge)
+# Evaluation Harness (Phase 4a, 4b & 4c — Deterministic Metrics, Repeats, LLM Judge, and 40-Question Lifecycle)
 
-The evaluation harness measures retrieval, answer quality, repeat stability, and citation faithfulness reproducibly across our golden question set (`data/eval/golden_questions.json`) without leaking raw PDF, chunk, or unsupported-claim text into version control.
+The evaluation harness measures retrieval, answer quality, repeat stability, and citation faithfulness reproducibly across our 40-question golden set (`data/eval/golden_questions.json`) without leaking raw PDF, chunk, or unsupported-claim text into version control.
 
 ---
 
-## 1. Dev / Test Split Rules
+## 1. Dev / Test Split Rule & Draft / Verified Lifecycle
 
-Every question in `data/eval/golden_questions.json` carries a `split` field (`"dev"` or `"test"`, defaulting to `"dev"`), and `scripts/run_eval.py` accepts `--split dev|test|all` (default `"dev"`):
+### A. Dev / Test Split Rule (`split: "dev" | "test"`)
+Every question in `data/eval/golden_questions.json` carries a `split` field (`"dev"` or `"test"`, defaulting to `"dev"`), and `scripts/run_eval.py` accepts `--split dev|test|all` (default `"dev"`). Across the 40-question set, `30` questions are in `dev` (`16` `ready_unverified`, `14` `draft_needs_fill`) and `10` are in `test` (`6` `ready_unverified`, `4` `draft_needs_fill`):
 
 - **Tune on `dev`, run `test` only for final numbers**: All prompt engineering, chunking adjustments, score thresholds, and retrieval experiments must be iterated and evaluated on `--split dev`. The `--split test` partition is a held-out benchmark run only at the end of a milestone to verify that improvements generalize rather than overfitting to the `dev` questions.
+
+### B. Question Lifecycle (`status` and `human_verified`)
+Each question progresses through three lifecycle stages via `status` (`"draft_needs_fill" | "ready_unverified" | "verified"`) and `human_verified` (`bool`):
+1. **`draft_needs_fill` (`human_verified = false`)**: Question text and target sources are defined, but `expected_pages` and/or `must_contain` answers are still empty (`18` questions in v1).
+   - **Excluded by default**: Scored runs (`scripts/run_eval.py`) automatically exclude `status == "draft_needs_fill"` questions unless `--include-drafts` is explicitly passed, and the report states how many draft questions were skipped and why.
+   - **Candidate inspection (`scripts/show_candidates.py`)**: Use the read-only helper `uv run python scripts/show_candidates.py` (or `--ids q13,q14`) to inspect the top-6 retrieved chunks in gitignored `data/eval/runs/candidates_<timestamp>.md`. **Candidates are pointers only—expected pages and answers must be confirmed in the original PDF, never copied blindly from chunk text.**
+2. **`ready_unverified` (`human_verified = false`)**: `expected_pages` and `must_contain` are populated (`22` questions in v1) and included in scored engineering runs, but have not yet been audited directly against the source PDF.
+3. **`verified` (`human_verified = true`)**: Expected PDF pages, figures, units, and acceptable spellings have been manually verified against the official annual report PDF.
+
+> [!IMPORTANT]
+> **Headline Numbers Rule**: Unverified questions (`human_verified = false`) must **not** be used for headline benchmark numbers. Reports automatically emit a `PRELIMINARY RESULTS` warning whenever fewer than 30 questions are evaluated or any evaluated question has `human_verified=false`.
 
 ---
 
@@ -21,7 +33,7 @@ Every question in `data/eval/golden_questions.json` carries a `split` field (`"d
 - **`MRR` (Mean Reciprocal Rank)**: Average of $\frac{1}{\text{rank}}$ of the **first** expected `(source, page)` across all retrieved chunks.
 - **`text_hit_any@k` (`@1`, `@3`, `@6`)**: Fraction of answerable questions where **at least one** chunk in the top-$k$ window satisfies **any** `must_contain` entry.
 - **`text_hit_all@k` (`@1`, `@3`, `@6`)**: Fraction of answerable questions where **every** `must_contain` entry is covered by the **union** of the top-$k$ chunks. Comparing `text_hit_any@k` with `text_hit_all@k` distinguishes partial context retrieval (e.g. retrieving only one company's growth rate in a two-fact query) from complete context coverage.
-- **`distinct_pages@6` (Crowding Indicator)**: Average number of distinct `(source, page)` pairs among the top 6 retrieved chunks. A value near `6.00` means all 6 chunks come from different pages; a low value (e.g. `3.00` on `q05`, where 4 of 6 chunks came from `tcs-ar-26` PDF page 24) reveals **page crowding**, where multiple chunks from a single long page crowd out other relevant pages.
+- **`distinct_pages@6` (Crowding Indicator)**: Average number of distinct `(source, page)` pairs among the top 6 retrieved chunks. A value near `6.00` means all 6 chunks come from different pages; a low value reveals **page crowding**, where multiple chunks from a single long page crowd out other relevant pages.
 
 ### B. Answer Outcomes & Grounding Metrics
 
@@ -29,9 +41,9 @@ Every evaluated question is assigned one of five deterministic outcomes (`evalua
 
 | Question Category | Outcome | Meaning |
 | :--- | :--- | :--- |
-| **Answerable** (`fact`, `comparison`) | `CORRECT` | Did not refuse, triggered no `must_not_contain` entry, and its answer (after stripping `[n]` citation markers) satisfies **all** `must_contain` entries. |
-| **Answerable** (`fact`, `comparison`) | `WRONG` | Produced an answer (did not refuse), but missed at least one `must_contain` entry or matched a `must_not_contain` entry. |
-| **Answerable** (`fact`, `comparison`) | `FALSE_REFUSAL` | Answerable in the corpus, but the system returned `NOT_FOUND_MESSAGE` (`"I could not find this in the provided reports."`). |
+| **Answerable** (`fact`, `comparison`, `table`) | `CORRECT` | Did not refuse, triggered no `must_not_contain` entry, and its answer (after stripping `[n]` citation markers) satisfies **all** `must_contain` entries. |
+| **Answerable** (`fact`, `comparison`, `table`) | `WRONG` | Produced an answer (did not refuse), but missed at least one `must_contain` entry or matched a `must_not_contain` entry. |
+| **Answerable** (`fact`, `comparison`, `table`) | `FALSE_REFUSAL` | Answerable in the corpus, but the system returned `NOT_FOUND_MESSAGE` (`"I could not find this in the provided reports."`). |
 | **Unanswerable / Adversarial** | `CORRECT_REFUSAL` | Properly refused with `NOT_FOUND_MESSAGE` and did not match any `must_not_contain` token. |
 | **Unanswerable / Adversarial** | `ANSWERED_ANYWAY` | Failed to refuse an out-of-corpus question, or included a forbidden `must_not_contain` string (such as `"HACKED"`). |
 
@@ -43,7 +55,7 @@ Every evaluated question is assigned one of five deterministic outcomes (`evalua
 When `--judge` is passed, `judge_answer()` runs **only on answers with `grounded=True`**, sending the question, answer, and **full text of every cited chunk** to `GenerationProvider`:
 
 - **`faithfulness_rate`**: Fraction of valid judged answers (`parse_ok=True`) where `verdict.faithful` is `True` (every claim in the answer is supported by its cited passages; Indian vs. Western comma differences like `6,17,437` vs `617,437` are allowed, while different numbers, labels, or units are marked unfaithful).
-  - **Faithfulness vs. Correctness**: An answer can be **100% faithful** to its cited passage while still being **`WRONG`** on `outcome` (for example, `q03` faithfully reports `11,000%` of paid-up value from chunk `[2]` on PDF page 36, so `faithful=True`, even though the question's `must_contain` requires the `₹110` per-share dividend).
+  - **Faithfulness vs. Correctness**: An answer can be **100% faithful** to its cited passage while still being **`WRONG`** on `outcome` (for example, `q03` faithfully reports `11,000%` of paid-up value from chunk `[3]` on PDF page 36, so `faithful=True`, even though the question's `must_contain` requires the `₹110` per-share dividend).
 - **`citation_precision`**: Ratio of supporting citations (`supports=True`) to all citations across valid judged answers ($\frac{\text{supporting citations}}{\text{all citations}}$). Measures whether the model over-cites irrelevant passages alongside supporting ones.
 - **`judge_error` count**: Number of judged answers where the judge returned malformed JSON twice in a row (initial call + 1 retry).
 - **Non-supporting citation numbers**: For each judged question ID, the committed report lists **only the citation numbers** (`[n]`) that did not support any claim. Raw `unsupported_claims` text and passage text are written **only** to gitignored files (`data/eval/runs/<ts>_<label>.json` and `data/eval/runs/<ts>_<label>_judge_review.md`).
@@ -69,7 +81,7 @@ Before trusting an LLM judge on real reports, we verify its grading logic on 6 s
 2. `cal02`: Wrong figure vs. the passage $\to$ `faithful=False, [1]=False`.
 3. `cal03`: Cited passage is irrelevant to the claim $\to$ `faithful=False, [1]=False`.
 4. `cal04`: Two citations, one supports and one irrelevant $\to$ `[1]=True, [2]=False`.
-5. `cal05`: Right number (`25.0%`) but wrong label (`Net margin` vs. `Operating margin`) $\to$ `faithful=False, [1]=False`.
+5. `cal05`: Right number (`18.4%`) but wrong label (`Net margin` vs. `Operating margin`) $\to$ `faithful=False, [1]=False`.
 6. `cal06`: Indian vs. Western number format only (`6,17,437` vs. `617,437`) $\to$ `faithful=True, [1]=True`.
 
 Run calibration via:
@@ -81,14 +93,18 @@ uv run python scripts/run_judge_calibration.py
 
 ## 4. Golden Set Rules & Workflow
 
-1. **Schema Fields (`data/eval/golden_questions.json`)**: `id` (unique), `question`, `type` (`fact | comparison | unanswerable | adversarial`), `answerable` (`bool`), `expected_pages` (`list[{source, page}]` using 1-indexed PDF page numbers), `must_contain`, `must_not_contain`, `notes`, `human_verified` (`bool`), and `split` (`"dev" | "test"`).
-2. **Matching Rules**: Citation markers (`[1]`, `[1, 3]`) are stripped first; numeric `must_contain` entries match by **exact normalized token equality** (`"11,000%"` $\to$ `"11000"` $\neq$ `"110"`); non-numeric entries use case-insensitive substring and `"a|b"` any-of syntax.
+1. **Schema Fields (`data/eval/golden_questions.json`)**: `id` (unique), `question`, `type` (`fact | comparison | table | unanswerable | adversarial`), `answerable` (`bool`), `expected_sources` (`list[str]`), `expected_pages` (`list[{source, page}]` using 1-indexed PDF page numbers), `must_contain`, `must_not_contain`, `notes`, `human_verified` (`bool`), `split` (`"dev" | "test"`), and `status` (`"draft_needs_fill" | "ready_unverified" | "verified"`). The loader (`load_golden_set`) also accepts neutral draft JSON files (`data/eval/drafts/golden_questions_draft_v1.json`) directly.
+2. **Matching Rules**: Citation markers (`[1]`, `[1, 3]`) are stripped first; numeric `must_contain` entries match by **exact normalized token equality** (`"11,000%"` $\to$ `"11000"` $\neq$ `"110"`, while Indian `5,84,519` and Western `584,519` both normalize to `"584519"`); non-numeric entries use case-insensitive substring and `"a|b"` any-of syntax.
 3. **CLI Commands**:
    ```powershell
-   # Validate golden set and store coverage (offline)
+   # Validate golden set (reports total, dev/test, and status/draft counts)
    uv run python scripts/run_eval.py --validate-only
 
-   # Run dev split with LLM judge (uses answer & judge caches in data/eval/cache/)
+   # Inspect top-6 retrieved candidate chunks for draft_needs_fill questions (read-only, gitignored output)
+   uv run python scripts/show_candidates.py
+   uv run python scripts/show_candidates.py --ids q13,q14
+
+   # Run dev split with LLM judge (excludes draft_needs_fill by default)
    uv run python scripts/run_eval.py --label baseline-v1 --judge
 
    # Measure repeat stability across 3 repeats
@@ -102,7 +118,8 @@ uv run python scripts/run_judge_calibration.py
 
 ## 5. Known Limitations & Judge Bias
 
-1. **Same-Family Judge Bias (Self-Preference / Shared Blind Spots)**: Both the answer generator and the faithfulness judge currently use the same `GenerationProvider` (`gemini-3.5-flash-lite`). An LLM judge from the same model family as the generator is systematically biased toward agreeing with the generator's phrasing and shares the same reasoning blind spots. Always spot-check the generated `data/eval/runs/<ts>_<label>_judge_review.md` by hand.
+1. **Same-Family Judge Bias (Self-Preference / Shared Blind Spots)**: Both the answer generator and the faithfulness judge currently use the same `GenerationProvider` (`gemini-3.1-flash-lite-preview`). An LLM judge from the same model family as the generator is systematically biased toward agreeing with the generator's phrasing and shares the same reasoning blind spots. Always spot-check the generated `data/eval/runs/<ts>_<label>_judge_review.md` by hand.
 2. **Sub-Claim Granularity in Multi-Citation Sentences**: The judge prompt grades whether each cited passage *"supports at least one claim in the answer that cites it."* When a sentence makes multiple sub-claims and attaches `[5][6]` at the end, if `[6]` supports two of the three sub-claims while `[5]` supports all three, `[6]` is marked `supports=True`.
-3. **Small Sample Size ($n = 12$ seeds, `human_verified = false`)**: Reports automatically display a `PRELIMINARY RESULTS` warning whenever $n < 30$ or any question has `human_verified=false`.
+3. **Unverified & Draft Questions (`human_verified = false`)**: All 40 questions in `golden_questions.json` currently have `human_verified=false` (`22` `ready_unverified`, `18` `draft_needs_fill`). Unverified questions must not be used for final headline numbers until verified against the source PDFs.
 4. **Weak Lexical Labels & Single Corpus**: Deterministic `must_contain` labels only check token presence, and all current questions come from two FY2025–26 Indian IT services reports (`tcs-ar-26`, `infosys-ar-26`).
+

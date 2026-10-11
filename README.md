@@ -173,41 +173,49 @@ Corporate annual reports frequently employ stylized typography, custom subsetted
 4. **Visual OCR Deferred**:
    - Visual OCR (e.g. Tesseract) to reconstruct words from the 30 degraded pages is deferred to a future phase to maintain a lean, high-throughput native extraction pipeline for the 95.8% clean corpus.
 
-## Evaluation (`baseline-v0` & `baseline-v1`)
+## Evaluation (`baseline-v0`, `baseline-v1` & 40-Question Golden Set)
 
-The repository includes a deterministic + LLM-as-a-judge evaluation harness (`src/annual_report_rag/evaluation/`), a 6-case synthetic judge calibration suite (`data/eval/judge_calibration.json`), and a 12-question golden seed set (`data/eval/golden_questions.json`) with a `dev` / `test` split covering factual lookups, cross-company comparisons, out-of-scope unanswerable queries, and adversarial prompt-injection probes.
+The repository includes a deterministic + LLM-as-a-judge evaluation harness (`src/annual_report_rag/evaluation/`), a 6-case synthetic judge calibration suite (`data/eval/judge_calibration.json`), and a **40-question golden set** (`data/eval/golden_questions.json`, mapped from `data/eval/drafts/golden_questions_draft_v1.json`) covering factual lookups (`fact`), table lookups (`table`), cross-company comparisons (`comparison`), out-of-scope queries (`unanswerable`), and prompt-injection probes (`adversarial`).
 
 > [!IMPORTANT]
-> **Split Discipline**: Tune retrieval, prompts, and thresholds on `--split dev` (the default); run `--split test` only for final milestone numbers. See [`docs/06-evaluation.md`](docs/06-evaluation.md) for full documentation on metrics, faithfulness judging, calibration, and limitations.
+> **Split Rule & Draft/Verified Lifecycle**:
+> - **Split Rule**: Tune retrieval, prompts, and thresholds on `--split dev` (`30` questions; `16` ready, `14` draft); run `--split test` (`10` questions; `6` ready, `4` draft) only for final milestone numbers.
+> - **Draft Exclusion**: Questions with `status: "draft_needs_fill"` (`18` of `40`, where expected pages and/or answers are not yet filled) are **excluded from scored runs by default** (override with `--include-drafts`).
+> - **Verification Rule**: Questions with `human_verified: false` (currently all `40` questions: `22` `ready_unverified` + `18` `draft_needs_fill`) must **not** be used for headline numbers until manually verified against the source PDFs. See [`docs/06-evaluation.md`](docs/06-evaluation.md) for full details.
 
 ### Running the Evaluation Harness
 
-1. **Validate `golden_questions.json` and check expected pages in ChromaDB (offline, zero API calls)**:
+1. **Validate `golden_questions.json` (reports 40 questions, `dev`/`test` counts, and draft/ready status counts)**:
    ```powershell
    uv run python scripts/run_eval.py --validate-only
    ```
-2. **Run synthetic judge calibration (`ExampleCo` cases, 6 Gemini calls)**:
+2. **Inspect top-6 retrieved candidate chunks for `draft_needs_fill` questions (read-only, zero API calls, saved to gitignored `data/eval/runs/candidates_<timestamp>.md`)**:
+   ```powershell
+   uv run python scripts/show_candidates.py
+   uv run python scripts/show_candidates.py --ids q13,q14
+   ```
+3. **Run synthetic judge calibration (`ExampleCo` cases, 6 Gemini calls)**:
    ```powershell
    uv run python scripts/run_judge_calibration.py
    ```
-3. **Run retrieval-only evaluation (offline, zero API calls)**:
+4. **Run retrieval-only evaluation (offline, zero API calls)**:
    ```powershell
    uv run python scripts/run_eval.py --retrieval-only --label baseline-v0-retrieval
    ```
-4. **Run full evaluation with the faithfulness judge (cached in `data/eval/cache/`)**:
+5. **Run full evaluation with the faithfulness judge (cached in `data/eval/cache/`)**:
    ```powershell
    uv run python scripts/run_eval.py --label baseline-v1 --judge --split dev
    ```
-5. **Run multi-repeat stability evaluation (`flip_rate` across $N$ generation passes)**:
+6. **Run multi-repeat stability evaluation (`flip_rate` across $N$ generation passes)**:
    ```powershell
    uv run python scripts/run_eval.py --label baseline-v1-repeats --repeats 3 --limit 6
    ```
-6. **Compare two evaluation runs**:
+7. **Compare two evaluation runs**:
    ```powershell
    uv run python scripts/compare_runs.py data/eval/results/<runA>.metrics.json data/eval/results/<runB>.metrics.json
    ```
 
-### Baseline v1 Summary (`split = dev`, `12` seed questions: `9` answerable, `3` unanswerable/adversarial)
+### Baseline v1 Summary (Evaluated on the initial `12` seed questions before 40-question draft load)
 
 > [!WARNING]
 > **Preliminary Benchmark**: Evaluated on $n = 12$ seed questions (`human_verified = false`). Latency `p95` is not statistically meaningful below 20 samples (`n < 20`). Full committed reports are in [`data/eval/results/`](data/eval/results/).

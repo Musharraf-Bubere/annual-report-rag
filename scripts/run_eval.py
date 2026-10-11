@@ -52,9 +52,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--only-type",
         type=str,
-        choices=["fact", "comparison", "unanswerable", "adversarial"],
+        choices=["fact", "comparison", "table", "unanswerable", "adversarial"],
         default=None,
         help="Filter golden questions to a single question type.",
+    )
+    parser.add_argument(
+        "--include-drafts",
+        action="store_true",
+        help="Include questions with status='draft_needs_fill' in scored runs (excluded by default).",
     )
     parser.add_argument(
         "--limit",
@@ -91,15 +96,34 @@ def run_cli(args: argparse.Namespace) -> int:
     warn_msgs = check_expected_pages_in_store(golden, store)
 
     if args.validate_only:
+        dev_qs = [q for q in golden if q.split == "dev"]
+        test_qs = [q for q in golden if q.split == "test"]
+        draft_qs = [q for q in golden if q.status == "draft_needs_fill"]
+        ready_qs = [q for q in golden if q.status == "ready_unverified"]
+        verified_qs = [q for q in golden if q.status == "verified" or q.human_verified]
+        dev_ready = sum(1 for q in dev_qs if q.status != "draft_needs_fill")
+        dev_draft = sum(1 for q in dev_qs if q.status == "draft_needs_fill")
+        test_ready = sum(1 for q in test_qs if q.status != "draft_needs_fill")
+        test_draft = sum(1 for q in test_qs if q.status == "draft_needs_fill")
+
         print(
             f"Validated {len(golden)} golden questions from '{settings.evaluation.golden_set_path}'."
+        )
+        print(
+            f"Split counts:  dev={len(dev_qs)} (ready={dev_ready}, draft={dev_draft}) | "
+            f"test={len(test_qs)} (ready={test_ready}, draft={test_draft})"
+        )
+        print(
+            f"Status counts: ready_unverified={len(ready_qs)} | "
+            f"draft_needs_fill={len(draft_qs)} | verified={len(verified_qs)}"
         )
         print(f"Store chunk count: {store.count()} | Store fingerprint: {store.fingerprint()[:16]}...")
         for q in golden:
             q_slice = classify_expected_page_quality(q, store)
             pages_str = ", ".join(f"{ep.source}:p{ep.page}" for ep in q.expected_pages) or "none"
             print(
-                f"  - {q.id} [{q.type} | split={q.split}] (answerable={q.answerable}, quality_slice={q_slice}): "
+                f"  - {q.id} [{q.type} | split={q.split} | status={q.status}] "
+                f"(answerable={q.answerable}, quality_slice={q_slice}): "
                 f"expected_pages=[{pages_str}], must_contain={q.must_contain}"
             )
         if warn_msgs:
@@ -121,6 +145,7 @@ def run_cli(args: argparse.Namespace) -> int:
         split=args.split,
         repeats=args.repeats,
         use_judge=args.judge,
+        include_drafts=args.include_drafts,
         store=store,
     )
 
