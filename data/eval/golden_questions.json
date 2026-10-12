@@ -265,7 +265,7 @@
     ],
     "must_not_contain": [],
     "notes": "",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -401,7 +401,7 @@
     ],
     "must_not_contain": [],
     "notes": "Checked against extracted PDF text only (not visually). 506 = 31 Mar 2026; 1,012 = 31 Mar 2025 (prior year), so only 506 is required.",
-    "human_verified": false,
+    "human_verified": true,
     "split": "test",
     "status": "ready_unverified"
   },
@@ -424,7 +424,7 @@
     ],
     "must_not_contain": [],
     "notes": "Checked against extracted PDF text only (not visually). Total employees (permanent + other than permanent) 6,17,437, BRSR table (printed page 138 = PDF page 108).",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },

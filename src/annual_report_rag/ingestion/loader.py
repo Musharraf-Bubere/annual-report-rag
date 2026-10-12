@@ -3,12 +3,18 @@
 import csv
 import re
 import string
+from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 import pymupdf
 
-from annual_report_rag.ingestion.glyph_repair import repair_glyphs
+from annual_report_rag.ingestion.glyph_repair import (
+    build_clean_vocabulary,
+    repair_degraded_page_text,
+    repair_glyphs,
+)
 from annual_report_rag.ingestion.quality import assess_page_quality
 
 
@@ -134,7 +140,10 @@ def write_degraded_log(output_path: Path, records: list[dict[str, object]]) -> N
         r
         for r in records
         if (str(r["pdf_name"]), str(r["page"])) not in existing_keys
-        and int(r.get("dropped_tokens", 0)) > 0
+        and (
+            int(r.get("dropped_tokens", 0)) > 0
+            or int(r.get("pre_repair_corrupted_tokens", 0)) > 0
+        )
     ]
     if not new_records and output_path.exists():
         return
@@ -177,8 +186,13 @@ def assess_and_filter_page(
     glyph_range_start: str = "\u0100",
     glyph_range_end: str = "\u052F",
     keep_tokens: tuple[str, ...] | set[str] = (),
+    clean_vocab_exact: Mapping[str, int] | None = None,
+    clean_vocab_lower: Mapping[str, int] | None = None,
+    join_spaced_capitals: bool = True,
+    rule_ii_counts: Counter[tuple[str, str]] | None = None,
+    join_counts: Counter[tuple[str, str]] | None = None,
 ) -> tuple[str, str, dict[str, object] | None]:
-    """Repairs corrupted glyphs, assesses quality, and filters tokens if degraded."""
+    """Repairs corrupted glyphs, assesses quality, and applies Phase 5c repair + filtering if degraded."""
     repaired_text, repaired_count = repair_glyphs(cleaned)
     metrics = assess_page_quality(source, page_num, repaired_text, raw_text=raw)
 
@@ -193,16 +207,32 @@ def assess_and_filter_page(
             return repaired_text, "repaired", rec
         return repaired_text, "clean", None
 
-    filtered, dropped = filter_corrupted_tokens(
+    # Check if page has corrupted tokens in glyph_range_start..glyph_range_end before Phase 5c letter repair
+    _, pre_dropped = filter_corrupted_tokens(
         repaired_text, glyph_range_start, glyph_range_end, keep_tokens=keep_tokens
     )
-    if dropped > 0:
+    if pre_dropped > 0:
+        # Rule 1c: Page is flagged degraded -> apply Phase 5c repair (Rules 1a, 1b(i)-(ii), 1d)
+        deg_repaired, deg_rep_chars, deg_joins = repair_degraded_page_text(
+            cleaned,
+            clean_vocab_exact=clean_vocab_exact,
+            clean_vocab_lower=clean_vocab_lower,
+            join_spaced_capitals=join_spaced_capitals,
+            rule_ii_counts=rule_ii_counts,
+            join_counts=join_counts,
+        )
+        # Rule 1e: Keep the dropping filter only for tokens that still contain unmapped corrupted glyphs
+        filtered, post_dropped = filter_corrupted_tokens(
+            deg_repaired, glyph_range_start, glyph_range_end, keep_tokens=keep_tokens
+        )
         rec = {
             "pdf_name": source,
             "page": page_num,
             "odd_char_count": metrics.odd_char_count,
-            "dropped_tokens": dropped,
-            "repaired_chars": repaired_count,
+            "pre_repair_corrupted_tokens": pre_dropped,
+            "dropped_tokens": post_dropped,
+            "repaired_chars": deg_rep_chars,
+            "joins_made": deg_joins,
             "remaining_chars": len(filtered),
         }
         return filtered, "degraded", rec
@@ -214,9 +244,9 @@ def assess_and_filter_page(
             "repaired_chars": repaired_count,
             "dropped_tokens": 0,
         }
-        return filtered, "repaired", rec
+        return repaired_text, "repaired", rec
 
-    return filtered, "clean", None
+    return repaired_text, "clean", None
 
 
 def load_pdf(
@@ -230,17 +260,17 @@ def load_pdf(
     glyph_range_end: str = "\u052F",
     keep_tokens: tuple[str, ...] | set[str] = (),
     degraded_log_path: Path | str | None = "data/processed/degraded_pages.csv",
+    join_spaced_capitals: bool = True,
 ) -> list[LoadedPage]:
-    """Extracts text using best-of extraction, repairs glyphs, and filters corrupted tokens."""
+    """Extracts text using best-of extraction, builds clean vocabulary, repairs degraded pages, and filters unmapped tokens."""
     path = Path(pdf_path)
     source = path.stem
     doc = pymupdf.open(path)
     pages_to_process = min(len(doc), limit_pages) if limit_pages else len(doc)
 
-    loaded_pages: list[LoadedPage] = []
-    degraded_records: list[dict[str, object]] = []
+    extracted_pages: list[tuple[int, str, str, str]] = []
+    clean_texts_for_vocab: list[str] = []
     skipped_count = 0
-    total_chars = 0
 
     for idx in range(pages_to_process):
         page_num = idx + 1
@@ -250,8 +280,41 @@ def load_pdf(
         if len(cleaned) < min_page_chars:
             skipped_count += 1
             continue
+        extracted_pages.append((page_num, cleaned, raw, method))
 
-        cleaned, quality, record = assess_and_filter_page(
+        # Check if page is clean for building the clean-page vocabulary (Rule 1b(ii) & 1d)
+        rep_num, rep_cnt = repair_glyphs(cleaned)
+        if rep_cnt == 0:
+            m_check = assess_page_quality(source, page_num, rep_num, raw_text=raw)
+            if m_check.single_letter_ratio <= single_threshold:
+                if m_check.odd_char_count < odd_count_threshold:
+                    clean_texts_for_vocab.append(cleaned)
+                else:
+                    _, pre_drop = filter_corrupted_tokens(
+                        rep_num,
+                        glyph_range_start,
+                        glyph_range_end,
+                        keep_tokens=keep_tokens,
+                    )
+                    if pre_drop == 0:
+                        clean_texts_for_vocab.append(cleaned)
+
+    doc.close()
+
+    clean_vocab_exact, clean_vocab_lower = (
+        build_clean_vocabulary(clean_texts_for_vocab)
+        if clean_texts_for_vocab
+        else (None, None)
+    )
+    rule_ii_counts: Counter[tuple[str, str]] = Counter()
+    join_counts: Counter[tuple[str, str]] = Counter()
+
+    loaded_pages: list[LoadedPage] = []
+    degraded_records: list[dict[str, object]] = []
+    total_chars = 0
+
+    for page_num, cleaned, raw, method in extracted_pages:
+        cleaned_out, quality, record = assess_and_filter_page(
             source,
             page_num,
             cleaned,
@@ -260,31 +323,48 @@ def load_pdf(
             glyph_range_start=glyph_range_start,
             glyph_range_end=glyph_range_end,
             keep_tokens=keep_tokens,
+            clean_vocab_exact=clean_vocab_exact,
+            clean_vocab_lower=clean_vocab_lower,
+            join_spaced_capitals=join_spaced_capitals,
+            rule_ii_counts=rule_ii_counts,
+            join_counts=join_counts,
         )
         repaired_chars = int(record.get("repaired_chars", 0)) if record else 0
         dropped_tokens = int(record.get("dropped_tokens", 0)) if record else 0
 
-        if record and dropped_tokens > 0:
+        if record and quality == "degraded":
             degraded_records.append(record)
 
         loaded_pages.append(
             LoadedPage(
                 source=source,
                 page=page_num,
-                text=cleaned,
+                text=cleaned_out,
                 extraction_method=method,
                 text_quality=quality,
                 repaired_chars=repaired_chars,
                 dropped_tokens=dropped_tokens,
             )
         )
-        total_chars += len(cleaned)
+        total_chars += len(cleaned_out)
 
-    doc.close()
+    if rule_ii_counts:
+        summary_ii = ", ".join(
+            f"'{src}'->'{tgt}' ({cnt})"
+            for (src, tgt), cnt in rule_ii_counts.most_common()
+        )
+        print(f"[{source}] Rule 1b(ii) all-ASCII repairs: {summary_ii}")
+    if join_counts:
+        print(
+            f"[{source}] Rule 1d spaced-capital joins: {sum(join_counts.values())} across {len(join_counts)} distinct words"
+        )
+
     if degraded_log_path is not None:
         write_degraded_log(Path(degraded_log_path), degraded_records)
     if skipped_count > 0:
-        print(f"[{source}] Skipped {skipped_count} page(s) with < {min_page_chars} characters.")
+        print(
+            f"[{source}] Skipped {skipped_count} page(s) with < {min_page_chars} characters."
+        )
     check_scanned_pdf(source, pages_to_process, len(loaded_pages), total_chars)
     return loaded_pages
 

@@ -192,3 +192,43 @@ Read-only comparison of **Current Stored Text** (`stored_text`), **Method A (Con
 
 - **Conclusion**: **Method A (Conflict-Free Glyph Map)** is strictly superior for production: it guarantees **100% numeric fidelity** (`305/305` numeric occurrences across the 5 pages, recovering `110` on Page 8 and `"excluding exceptional items"` on Page 36), adds `0 ms` overhead and `0 MB` dependencies, whereas **RapidOCR (Method B)** corrupts `₹52,820` into `352,820` and `₹52,391` into `352,391` on Page 36, loses the `₹31` final dividend on Page 24 due to an inverted text-box crop, adds `~58 MiB` of dependencies (Apache-2.0), and costs `20.6–33.1 s` per page on CPU.
 
+---
+
+## 8. Phase 5c: Deterministic Glyph Repair Re-Index (`exp5c-glyph-retrieval` & `exp5c-glyph-repair` vs. `baseline-v3`)
+
+After applying the Phase 5c deterministic glyph repair (`34` conflict-free 1:1 mappings, `7` vocabulary-gated ambiguous ASCII substitutions, and vocabulary-gated split-capital joining on the `30` degraded TCS pages) and re-indexing (`3,110` chunks: `1,684` `infosys-ar-26`, `1,426` `tcs-ar-26`), we evaluated `--retrieval-only` (`20261012T024510Z_exp5c-glyph-retrieval`) and full generation with `--judge` (`20261012T025001Z_exp5c-glyph-repair`) on the `29` ready `dev` questions against `baseline-v3` (`20261012T005928Z_baseline-v3`).
+
+### A. Aggregate Comparison (`baseline-v3` vs. `exp5c-glyph-repair`)
+
+| Metric | `baseline-v3` | `exp5c-glyph-repair` | Delta (`B - A`) |
+| :--- | :--- | :--- | :--- |
+| `page_hit@1` / `@3` / `@6` | `0.4800` / `0.8000` / `0.8400` | `0.4800` / `0.8000` / `0.8400` | `0.0000` / `0.0000` / `0.0000` |
+| `MRR` | `0.6480` | `0.6413` | `-0.0067` |
+| `text_hit_any@1` / `@3` / `@6` | `0.6000` / `0.7200` / `0.8400` | `0.6000` / `0.7200` / **`0.8800`** | `0.0000` / `0.0000` / **`+0.0400`** |
+| `text_hit_all@1` / `@3` / `@6` | `0.5600` / `0.7200` / `0.8400` | `0.5600` / `0.7200` / **`0.8800`** | `0.0000` / `0.0000` / **`+0.0400`** |
+| `distinct_pages@6` | `5.00` | `4.88` | `-0.12` |
+| `CORRECT` | `19` | `19` | `0` (`0` regressions on `CORRECT` questions) |
+| `WRONG` | `1` | `3` | `+2` (`q05`, `q14`: `FALSE_REFUSAL -> WRONG`) |
+| `FALSE_REFUSAL` | `5` | `3` | `-2` (`q05`, `q14` moved out of refusal) |
+| `CORRECT_REFUSAL` | `4` | `4` | `0` |
+| `ANSWERED_ANYWAY` | `0` | `0` | `0` |
+| `grounded_rate` (answerable) | `0.8000` | `0.8800` | `+0.0800` |
+| `questions_with_unsupported_numbers` | `0` | `1` (`['q05']`) | `+1` (calculated `19.78%` from `52,820 / 2,67,021`) |
+| `faithfulness_rate` | `1.0000` (`20/20`) | `0.9545` (`21/22`) | `-0.0455` (`q05` arithmetic division flagged by judge) |
+| `citation_precision` | `1.0000` (`34/34`) | `1.0000` (`38/38`) | `0.0000` |
+| `avg_cost_per_query_usd` | `$0.000691` | `$0.000702` | `+$0.000011` |
+
+### B. Slice Breakdown by Expected-Page Text Quality (`all_degraded` vs. `all_clean`)
+
+| Expected-Page Quality | Count | `baseline-v3` `page_hit@6` | `exp5c` `page_hit@6` | `baseline-v3` `MRR` | `exp5c` `MRR` | `baseline-v3` `text_hit_all@6` | `exp5c` `text_hit_all@6` | `baseline-v3` `CORRECT` | `exp5c` `CORRECT` |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`all_clean`** | `14` | `0.8571` | `0.8571` | `0.6333` | `0.6333` | `0.9286` | `0.9286` | `13/14` | `13/14` |
+| **`all_degraded`** | `8` | `0.7500` | `0.7500` | `0.6042` | `0.5833` | `0.6250` (`5/8`) | **`0.7500` (`6/8`, `+0.1250`)** | `3/8` | `3/8` |
+| **`mixed`** | `3` | `1.0000` | `1.0000` | `0.8333` | `0.8333` | `1.0000` | `1.0000` | `3/3` | `3/3` |
+
+### C. Diagnosis of `q03`, `q05`, `q14`, and `q30`
+- **`q03` (`WRONG`, `page_hit@6 = True`, `text_hit_all@6 = False`)**: Retrieves `tcs-ar-26-p36-c1` at rank 3 (`0.7522`, `"FY 2026 is 11,000% of the paid-up value of each share"`), while the preceding dividend table chunk `tcs-ar-26-p36-c0` (`"Total 110"`) remains outside top-6 due to chunk-boundary splitting between table and narrative.
+- **`q05` (`FALSE_REFUSAL -> WRONG`, `page_hit@6 = False`, `text_hit_all@6 = False`)**: Repairing `tcs-ar-26-p36-c1` (rank 4, `0.7340`) restored `"The profit for the year attributable to shareholders (excluding exceptional items) for FY 2026 was ₹52,820 crore"` alongside `"revenue from operations for FY 2026 was ₹2,67,021 crore"`. Because `q05` defines net profit margin in parentheses as `(profit attributable to shareholders, excluding exceptional items, as a percentage of revenue)`, the generator computed `52,820 / 2,67,021 = 19.78% [4]`, which does not match `must_contain: ["19.8"]` (the rounded 1-decimal headline figure on `p8`/`p58`, still crowded out by 4 chunks of `p24`).
+- **`q14` (`FALSE_REFUSAL -> WRONG`, `page_hit@6 = False`, `text_hit_all@6: False -> True`)**: Repairing page 36 promoted `tcs-ar-26-p36-c2` into the top 6 at rank 5 (`0.7185`). `p36-c2` starts in the 200-char overlap mid-sentence (`"₹52,820 crore, registering a growth of 8.8%..."`, giving `text_hit_all@6 = True` for `"8.8"`), while its subject `"The profit for the year attributable to shareholders (excluding exceptional items)"` sits in `p36-c1` (crowded out by 4 chunks of `p24`). Inside `p36-c2`, the complete **standalone** sentence states `"...(excluding exceptional items) in FY 2026 was ₹52,391 crore, registering a growth of 9.0%"`, so the generator cited `9.0% [5]`.
+- **`q30` (`FALSE_REFUSAL`, `page_hit@6 = True`, `text_hit_all@6 = True`)**: Retrieves `tcs-ar-26-p24-c5` at rank 1 (`0.7911`) and `tcs-ar-26-p24-c3` at rank 6 (`0.7383`, `"Earnings per share (Amount in H) ... FY 2026 145.67"`). Because `p24-c3` labels the chart `"Earnings per share"` without the qualifier `"excluding exceptional items"`, the generator conservatively refuses.
+
