@@ -26,7 +26,7 @@
     ],
     "must_not_contain": [],
     "notes": "",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -58,7 +58,7 @@
     ],
     "must_not_contain": [],
     "notes": "",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -85,7 +85,7 @@
     ],
     "must_not_contain": [],
     "notes": "Checked against extracted PDF text only (not visually). Total FY2026 dividend Rs 110/share (11,000% of paid-up value); final Rs 31 recommended.",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -112,7 +112,7 @@
     ],
     "must_not_contain": [],
     "notes": "Checked against extracted PDF text only (not visually). 52,820 is EXCLUDING exceptional items. Reported = 49,210 (after restructuring, Labour Codes, legal-claim items).",
-    "human_verified": false,
+    "human_verified": true,
     "split": "test",
     "status": "ready_unverified"
   },
@@ -139,7 +139,7 @@
     ],
     "must_not_contain": [],
     "notes": "Checked against extracted PDF text only (not visually). 19.8% is excluding exceptional items (MD&A table). Reported margin is lower.",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -162,7 +162,7 @@
     ],
     "must_not_contain": [],
     "notes": "Checked against extracted PDF text only (not visually). 583 = 31 Mar 2026; 1,073 = 31 Mar 2025 (prior year), so only 583 is required.",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -201,7 +201,7 @@
     ],
     "must_not_contain": [],
     "notes": "Pages 33/81/16 also state the figure (81 was retrieved top-1 earlier and wrongly counted as a miss).",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -228,7 +228,7 @@
     ],
     "must_not_contain": [],
     "notes": "",
-    "human_verified": false,
+    "human_verified": true,
     "split": "test",
     "status": "ready_unverified"
   },

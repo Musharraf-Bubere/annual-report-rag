@@ -181,6 +181,29 @@ def test_find_unsupported_numbers() -> None:
         cited_fy_short,
     ) == ["2030"]
 
+    # Dates like "March 31, 2025" or "31, 2025" must NOT be read as comma-grouped numbers ("31, 2025" -> 312025)
+    cited_tax = [
+        RetrievedChunk(
+            chunk_id="tcs-ar-26-p224-c0",
+            text=(
+                "received from direct tax authorities in India and other jurisdictions "
+                "is H583 crore and H1,073 crore as at March 31, 2026 and 2025, respectively."
+            ),
+            source="tcs-ar-26",
+            page=224,
+            score=0.9,
+            extraction_method="default",
+            text_quality="clean",
+        )
+    ]
+    ans_date = (
+        "The consolidated contingent liability in respect of tax demands received from "
+        "direct tax authorities is ₹583 crore as at March 31, 2026, and ₹1,073 crore "
+        "as at March 31, 2025 [1]."
+    )
+    assert find_unsupported_numbers(ans_date, cited_tax) == []
+    assert find_unsupported_numbers("Balances as at 31, 2025 were ₹1,073 crore [1].", cited_tax) == []
+
 
 def test_answerer_pipeline_cases(tmp_path: Path) -> None:
     """Verifies answer_question for grounded, not_found, invalid citation, and no_context."""

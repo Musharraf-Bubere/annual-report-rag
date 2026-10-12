@@ -7,7 +7,7 @@ from annual_report_rag.retrieval.retriever import RetrievedChunk
 
 _CITATION_MARKER_RE = re.compile(r"\[\s*\d+(?:\s*,\s*\d+)*\s*\]")
 _CANDIDATE_NUMBER_RE = re.compile(
-    r"(?<!\d)(?:\d+(?:,\s*\d+)+(?:\.\d+)?|\d+\.\d+|\d{3,})(?!\d)"
+    r"(?<!\d)(?:\d{1,3}(?:,\d{2,3})+(?:\.\d+)?|\d+\.\d+|\d{3,})(?!\d)"
 )
 
 

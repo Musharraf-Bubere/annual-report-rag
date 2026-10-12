@@ -123,7 +123,7 @@ uv run python scripts/run_judge_calibration.py
 
 1. **Same-Family Judge Bias (Self-Preference / Shared Blind Spots)**: Both the answer generator and the faithfulness judge currently use the same `GenerationProvider` (`gemini-3.1-flash-lite-preview`). An LLM judge from the same model family as the generator is systematically biased toward agreeing with the generator's phrasing and shares the same reasoning blind spots. Always spot-check the generated `data/eval/runs/<ts>_<label>_judge_review.md` by hand.
 2. **Sub-Claim Granularity in Multi-Citation Sentences**: The judge prompt grades whether each cited passage *"supports at least one claim in the answer that cites it."* When a sentence makes multiple sub-claims and attaches `[5][6]` at the end, if `[6]` supports two of the three sub-claims while `[5]` supports all three, `[6]` is marked `supports=True`.
-3. **Unverified & Draft Questions (`human_verified = false`)**: In `golden_questions.json`, `28` of `40` questions still have `human_verified=false` (`12` are `human_verified=true`; `39` are `ready_unverified` and `1` is `draft_needs_fill`). Unverified questions must not be used for final headline numbers until verified against the source PDFs.
+3. **Unverified & Draft Questions (`human_verified = false`)**: In `golden_questions.json`, `20` of `40` questions still have `human_verified=false` (`20` are `human_verified=true`; `39` are `ready_unverified` and `1` is `draft_needs_fill`). Unverified questions must not be used for final headline numbers until verified against the source PDFs.
 4. **Weak Lexical Labels & Single Corpus**: Deterministic `must_contain` labels only check token presence, and all current questions come from two FY2025–26 Indian IT services reports (`tcs-ar-26`, `infosys-ar-26`).
 
 ---
@@ -157,3 +157,38 @@ All experiments were evaluated on `--split dev` ($29$ ready questions, $25$ answ
 3. **Why `q14` Still Refused in Generation & Why `q03`, `q05`, `q26` Missed Top-10**:
    - On `q14`, `tcs-ar-26-p36-c1` contains `8.8%`, but because page 36 is `degraded`, the phrase `"(excluding exceptional items)"` was stripped during corrupted-glyph filtering, causing the generator to conservatively refuse.
    - Full-index rank diagnostics show `q26` (`tcs-ar-26-p25-c0`, attrition callout tile without `"TCS"` or `"2026"` in chunk text) sits at **rank 17**, `q03` (`tcs-ar-26-p36-c0`, dividend table chunk split from narrative chunk `p36-c1`) sits at **rank 78**, and `q05` (`tcs-ar-26-p8-c7`, degraded `"Net M argin"` text) sits at **rank 100**. Recovering those requires lexical/BM25 hybrid search or neighbouring-chunk/table context rather than top-$k$ or page-cap tuning.
+
+---
+
+## 7. Phase 5b: Scorer Date Fix, `baseline-v3` Rescore, and Degraded-Page Text-Repair Feasibility
+
+### A. Offline Scorer Date Fix & Rescores (`--rescore`, 0 API Calls)
+- **Fix (`generation/checks.py`)**: Tightened `_CANDIDATE_NUMBER_RE` from `r"(?<!\d)(?:\d+(?:,\s*\d+)+(?:\.\d+)?|\d+\.\d+|\d{3,})(?!\d)"` to `r"(?<!\d)(?:\d{1,3}(?:,\d{2,3})+(?:\.\d+)?|\d+\.\d+|\d{3,})(?!\d)"` so dates like `"March 31, 2025"` or `"31, 2026"` are not parsed as comma-grouped numbers (`312025` / `312026`).
+- **Rescore Results**:
+  - `baseline-v2` $\to$ **`baseline-v3`** (`20261012T005928Z_baseline-v3`): `0` metric or outcome changes (`19 CORRECT`, `1 WRONG`, `5 FALSE_REFUSAL`, `4 CORRECT_REFUSAL`, `questions_with_unsupported_numbers = 0`). **`baseline-v3` is now the locked reference baseline.**
+  - `exp5a-pagecap2` $\to$ **`exp5a-pagecap2-s3`** (`20261012T005932Z_exp5a-pagecap2-s3`): `questions_with_unsupported_numbers` dropped from `1` (`['q06']`) to **`0` (`[]`)**.
+  - `exp5a-topk8` $\to$ **`exp5a-topk8-s3`** (`20261012T005936Z_exp5a-topk8-s3`): `questions_with_unsupported_numbers` dropped from `1` (`['q06']`) to **`0` (`[]`)**.
+
+### B. Degraded-Page Text-Repair Feasibility (`tcs-ar-26` Pages 8, 24, 33, 36, 58)
+Read-only comparison of **Current Stored Text** (`stored_text`), **Method A (Conflict-Free Glyph Map)**, and **Method B (RapidOCR at 250 DPI)** on `tcs-ar-26` pages `8, 24, 33, 36, 58`:
+
+| Page | Method | Number Agreement (vs. PyMuPDF) | Numbers Changed / Lost | Target Phrases Present (`excluding exceptional items` / `Net Margin` / `Operating Income` / `dividend` / `attrition`) | Time / Page |
+| :---: | :--- | :---: | :--- | :--- | :---: |
+| **8** | **Current Stored** | `98.0%` (`48/49`) | `110` lost (`₹110ͬ-` dropped by token filter) | `Operating Income`, `dividend` (`Net M argin` has space) | `97.1 ms` |
+| **8** | **Method A (Glyph Map)** | **`100.0%` (`49/49`)** | **None (`110` recovered as `₹110/-`)** | `Operating Income`, `dividend` (`Net M argin` has space) | `~97 ms` |
+| **8** | **Method B (RapidOCR)** | `98.0%` (`48/49`) | `3600` $\to$ `360°`; spurious `99` added | `Net Margin`, `Operating Income`, `dividend` | `33.06 s` |
+| **24** | **Current Stored** | `100.0%` (`102/102`) | None | `dividend` | `82.4 ms` |
+| **24** | **Method A (Glyph Map)** | **`100.0%` (`102/102`)** | **None** | `dividend` (plus `declared`, `interim`, `dividends`, `special`, `total`) | `~82 ms` |
+| **24** | **Method B (RapidOCR)** | `98.0%` (`100/102`) | **`31` (final dividend) & `25.3` lost** (inverted crop); spurious `962657`, `3`, `5` | `dividend` | `24.12 s` |
+| **33** | **Current Stored** | `100.0%` (`39/39`) | None (`0` corrupted glyphs on page) | `dividend` | `23.5 ms` |
+| **33** | **Method A (Glyph Map)** | **`100.0%` (`39/39`)** | **None** | `dividend` | `~24 ms` |
+| **33** | **Method B (RapidOCR)** | `84.6%` (`33/39`) | Step badge numbers `1, 1, 2, 2, 4, 4` lost | `dividend` | `21.49 s` |
+| **36** | **Current Stored** | `100.0%` (`75/75`) | None | `dividend` (`excluding exceptional items` dropped by token filter) | `12.2 ms` |
+| **36** | **Method A (Glyph Map)** | **`100.0%` (`75/75`)** | **None** | **`excluding exceptional items`**, `dividend` | `~12 ms` |
+| **36** | **Method B (RapidOCR)** | `97.3%` (`73/75`) | **`52,820` $\to$ `352,820` & `52,391` $\to$ `352,391`** (`₹` read as `3`) | `excluding exceptional items`, `dividend` | `20.60 s` |
+| **58** | **Current Stored** | `100.0%` (`40/40`) | None | *(none on page; `Earnings per share`, `gratuity`, `compensated absences`)* | `15.5 ms` |
+| **58** | **Method A (Glyph Map)** | **`100.0%` (`40/40`)** | **None** | *(none on page; recovers `Earnings`, `changes`, `gratuity`, `compensated absences`)* | `~16 ms` |
+| **58** | **Method B (RapidOCR)** | `95.0%` (`38/40`) | Footnote numbers `133` and `2013` lost | *(none on page; glues `ofgratuityof1,816croreandlong-termcompensated`)* | `26.78 s` |
+
+- **Conclusion**: **Method A (Conflict-Free Glyph Map)** is strictly superior for production: it guarantees **100% numeric fidelity** (`305/305` numeric occurrences across the 5 pages, recovering `110` on Page 8 and `"excluding exceptional items"` on Page 36), adds `0 ms` overhead and `0 MB` dependencies, whereas **RapidOCR (Method B)** corrupts `₹52,820` into `352,820` and `₹52,391` into `352,391` on Page 36, loses the `₹31` final dividend on Page 24 due to an inverted text-box crop, adds `~58 MiB` of dependencies (Apache-2.0), and costs `20.6–33.1 s` per page on CPU.
+
