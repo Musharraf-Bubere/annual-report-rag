@@ -257,3 +257,160 @@ def test_retriever_query_prefix_and_max_chunks_per_page(tmp_path: Path) -> None:
     retrieve(q_text, rec_embedder, store, prefixed_settings)
     assert recorded_texts == [f"{prefix}{q_text}"]
 
+
+def test_retriever_neighbor_expansion_and_citations(tmp_path: Path) -> None:
+    """Verifies Phase 5e neighbour expansion: window=0 identity, page start/end, dedupe, cap, and [n] citations."""
+    from dataclasses import replace
+
+    from annual_report_rag.generation.answerer import (
+        extract_citation_numbers,
+        resolve_citations,
+    )
+
+    db_path = str(tmp_path / "retriever_neighbor_chroma")
+    store = ChromaStore(persist_path=db_path, collection_name="neighbor_col")
+    embedder = FakeProvider(embedding_dim=4)
+    base_settings = _build_test_settings(min_score=0.0, top_k=3)
+
+    # Create 5 chunks on page 24 (c0..c4) and 2 chunks on page 36 (c0..c1)
+    chunks = [
+        Chunk(
+            id="tcs-ar-26-p24-c0",
+            text="Page 24 chunk 0 start",
+            source="tcs-ar-26",
+            page=24,
+            chunk_index=0,
+        ),
+        Chunk(
+            id="tcs-ar-26-p24-c1",
+            text="Page 24 chunk 1 middle",
+            source="tcs-ar-26",
+            page=24,
+            chunk_index=1,
+        ),
+        Chunk(
+            id="tcs-ar-26-p24-c2",
+            text="Page 24 chunk 2 shared neighbour",
+            source="tcs-ar-26",
+            page=24,
+            chunk_index=2,
+        ),
+        Chunk(
+            id="tcs-ar-26-p24-c3",
+            text="Page 24 chunk 3",
+            source="tcs-ar-26",
+            page=24,
+            chunk_index=3,
+        ),
+        Chunk(
+            id="tcs-ar-26-p24-c4",
+            text="Page 24 chunk 4 end with ₹110 dividend",
+            source="tcs-ar-26",
+            page=24,
+            chunk_index=4,
+        ),
+        Chunk(
+            id="tcs-ar-26-p36-c0",
+            text="Page 36 chunk 0 start",
+            source="tcs-ar-26",
+            page=36,
+            chunk_index=0,
+        ),
+        Chunk(
+            id="tcs-ar-26-p36-c1",
+            text="Page 36 chunk 1 end",
+            source="tcs-ar-26",
+            page=36,
+            chunk_index=1,
+        ),
+    ]
+    q_text = "What dividend did TCS declare?"
+    q_vec = embedder.embed([q_text], purpose="query")[0]
+    # Make top 3 primary hits:
+    # #1: p24-c0 (page start -> only c+1=p24-c1 exists; p24-c1 is already #2 primary!)
+    # #2: p24-c1 (neighbours: c0 is #1 primary, c2 is added as neighbour)
+    # #3: p24-c4 (page end -> only c-1=p24-c3 exists; c+1=p24-c5 does not exist)
+    v_top1 = list(q_vec)
+    v_top2 = [q_vec[0] * 0.98, q_vec[1], q_vec[2], q_vec[3]]
+    v_top3 = [q_vec[0] * 0.95, q_vec[1], q_vec[2], q_vec[3]]
+    v_low = [-q_vec[0] * 0.1, -q_vec[1] * 0.1, q_vec[2] * 0.1, q_vec[3] * 0.1]
+    store.add_chunks(
+        chunks,
+        [
+            v_top1,  # p24-c0 (#1)
+            v_top2,  # p24-c1 (#2)
+            v_low,   # p24-c2
+            v_low,   # p24-c3
+            v_top3,  # p24-c4 (#3)
+            v_low,   # p36-c0
+            v_low,   # p36-c1
+        ],
+    )
+
+    # 1. neighbor_window=0 is identical to current output
+    res_w0 = retrieve(q_text, embedder, store, base_settings)
+    assert [c.chunk_id for c in res_w0] == [
+        "tcs-ar-26-p24-c0",
+        "tcs-ar-26-p24-c1",
+        "tcs-ar-26-p24-c4",
+    ]
+    assert all(c.neighbor_of is None for c in res_w0)
+
+    # 2. neighbor_window=1 expands top N=3 primary hits:
+    # - p24-c0 (start of page): c-1 doesn't exist; c+1 is p24-c1 (already in primary -> deduped)
+    # - p24-c1: c-1 is p24-c0 (already in primary -> deduped); c+1 is p24-c2 (added, neighbor_of=tcs-ar-26-p24-c1)
+    # - p24-c4 (end of page): c-1 is p24-c3 (added, neighbor_of=tcs-ar-26-p24-c4); c+1 doesn't exist
+    w1_settings = replace(
+        base_settings,
+        retrieval=replace(
+            base_settings.retrieval,
+            neighbor_window=1,
+            max_context_chunks=10,
+        ),
+    )
+    res_w1 = retrieve(q_text, embedder, store, w1_settings)
+    assert [c.chunk_id for c in res_w1] == [
+        "tcs-ar-26-p24-c0",
+        "tcs-ar-26-p24-c1",
+        "tcs-ar-26-p24-c4",
+        "tcs-ar-26-p24-c2",
+        "tcs-ar-26-p24-c3",
+    ]
+    # Primary hits keep their exact order and scores, with neighbor_of=None
+    for p_zero, p_exp in zip(res_w0, res_w1[:3], strict=True):
+        assert p_exp.chunk_id == p_zero.chunk_id
+        assert p_exp.score == p_zero.score
+        assert p_exp.neighbor_of is None
+    # Appended neighbours are tagged with neighbor_of=<primary_chunk_id>
+    assert res_w1[3].neighbor_of == "tcs-ar-26-p24-c1"
+    assert res_w1[4].neighbor_of == "tcs-ar-26-p24-c4"
+
+    # 3. Shared neighbour deduplication: if primary hits are p24-c1 and p24-c3, both want p24-c2; added once
+    # Test max_context_chunks cap: cap at 4 keeps 3 primaries + 1st neighbour
+    cap4_settings = replace(
+        base_settings,
+        retrieval=replace(
+            base_settings.retrieval,
+            neighbor_window=1,
+            max_context_chunks=4,
+        ),
+    )
+    res_cap4 = retrieve(q_text, embedder, store, cap4_settings)
+    assert [c.chunk_id for c in res_cap4] == [
+        "tcs-ar-26-p24-c0",
+        "tcs-ar-26-p24-c1",
+        "tcs-ar-26-p24-c4",
+        "tcs-ar-26-p24-c2",
+    ]
+
+    # 4. Citation mapping [n] maps 1:1 to context chunks and records primary vs neighbour
+    raw_nums = extract_citation_numbers("TCS declared ₹110 [3] and details in [4].")
+    citations, _, invalid_cnt = resolve_citations(raw_nums, res_w1, w1_settings)
+    assert invalid_cnt == 0
+    assert len(citations) == 2
+    assert citations[0].chunk_id == "tcs-ar-26-p24-c4"
+    assert citations[0].neighbor_of is None
+    assert citations[1].chunk_id == "tcs-ar-26-p24-c2"
+    assert citations[1].neighbor_of == "tcs-ar-26-p24-c1"
+
+

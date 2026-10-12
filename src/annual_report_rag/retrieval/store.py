@@ -154,6 +154,28 @@ class ChromaStore:
         result = self.collection.get(ids=ids)
         return set(result.get("ids", []))
 
+    def get_by_ids(self, ids: list[str]) -> dict[str, QueryResult]:
+        """Fetches stored chunks by chunk ID, returning a mapping from chunk_id to QueryResult (score=0.0)."""
+        if not ids or self.count() == 0:
+            return {}
+        result = self.collection.get(ids=ids, include=["documents", "metadatas"])
+        found_ids = result.get("ids") or []
+        docs = result.get("documents") or []
+        metas = result.get("metadatas") or []
+        out: dict[str, QueryResult] = {}
+        for cid, doc, meta in zip(found_ids, docs, metas, strict=False):
+            meta_dict = meta or {}
+            out[str(cid)] = QueryResult(
+                chunk_id=str(cid),
+                text=str(doc),
+                source=str(meta_dict.get("source", "")),
+                page=int(meta_dict.get("page", 0)),
+                score=0.0,
+                extraction_method=str(meta_dict.get("extraction_method", "default")),
+                text_quality=str(meta_dict.get("text_quality", "clean")),
+            )
+        return out
+
     def count(self) -> int:
         """Returns the total number of indexed chunks currently in the store."""
         return self.collection.count()

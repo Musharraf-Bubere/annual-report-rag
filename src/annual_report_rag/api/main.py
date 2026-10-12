@@ -239,6 +239,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     page=r.page,
                     score=r.score,
                     text_quality=r.text_quality,
+                    neighbor_of=r.neighbor_of,
                 )
                 for r in result.retrieved
             ],

@@ -21,7 +21,9 @@ from annual_report_rag.evaluation.metrics import (
     p95,
     page_hit_at_k,
     reciprocal_rank,
+    text_hit_all_at_context,
     text_hit_all_at_k,
+    text_hit_any_at_context,
     text_hit_any_at_k,
 )
 from annual_report_rag.evaluation.reporting import (
@@ -78,6 +80,10 @@ def compute_settings_hash(settings: Settings) -> str:
             ret_dict.pop("query_prefix", None)
         if ret_dict.get("max_chunks_per_page") is None:
             ret_dict.pop("max_chunks_per_page", None)
+        if not ret_dict.get("neighbor_window"):
+            ret_dict.pop("neighbor_window", None)
+        if ret_dict.get("max_context_chunks") is None:
+            ret_dict.pop("max_context_chunks", None)
     serialized = json.dumps(raw, sort_keys=True)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
@@ -162,8 +168,10 @@ def _compute_retrieval_fields(
     chunks: Sequence[RetrievedChunk],
     num_sources: int,
 ) -> dict[str, Any]:
-    """Computes per-question retrieval hit metrics and distinct_pages@6."""
-    dp6 = distinct_pages_at_k(chunks, k=6)
+    """Computes primary-ranking retrieval hit metrics, distinct_pages@6, and full-context text_hit@context."""
+    primary_chunks = [c for c in chunks if c.neighbor_of is None]
+    dp6 = distinct_pages_at_k(primary_chunks, k=6)
+    ctx_count = len(chunks)
     if not q.answerable:
         return {
             "page_hit_at_1": None,
@@ -177,24 +185,30 @@ def _compute_retrieval_fields(
             "text_hit_all_at_1": None,
             "text_hit_all_at_3": None,
             "text_hit_all_at_6": None,
+            "text_hit_any_at_context": None,
+            "text_hit_all_at_context": None,
+            "context_chunks_count": ctx_count,
             "distinct_pages_at_6": dp6,
         }
 
-    tha1 = text_hit_any_at_k(chunks, q.must_contain, 1, num_sources=num_sources)
-    tha3 = text_hit_any_at_k(chunks, q.must_contain, 3, num_sources=num_sources)
-    tha6 = text_hit_any_at_k(chunks, q.must_contain, 6, num_sources=num_sources)
+    tha1 = text_hit_any_at_k(primary_chunks, q.must_contain, 1, num_sources=num_sources)
+    tha3 = text_hit_any_at_k(primary_chunks, q.must_contain, 3, num_sources=num_sources)
+    tha6 = text_hit_any_at_k(primary_chunks, q.must_contain, 6, num_sources=num_sources)
     return {
-        "page_hit_at_1": page_hit_at_k(chunks, q.expected_pages, 1, num_sources=num_sources),
-        "page_hit_at_3": page_hit_at_k(chunks, q.expected_pages, 3, num_sources=num_sources),
-        "page_hit_at_6": page_hit_at_k(chunks, q.expected_pages, 6, num_sources=num_sources),
-        "reciprocal_rank": round(reciprocal_rank(chunks, q.expected_pages), 4),
+        "page_hit_at_1": page_hit_at_k(primary_chunks, q.expected_pages, 1, num_sources=num_sources),
+        "page_hit_at_3": page_hit_at_k(primary_chunks, q.expected_pages, 3, num_sources=num_sources),
+        "page_hit_at_6": page_hit_at_k(primary_chunks, q.expected_pages, 6, num_sources=num_sources),
+        "reciprocal_rank": round(reciprocal_rank(primary_chunks, q.expected_pages), 4),
         "text_hit_at_6": tha6,
         "text_hit_any_at_1": tha1,
         "text_hit_any_at_3": tha3,
         "text_hit_any_at_6": tha6,
-        "text_hit_all_at_1": text_hit_all_at_k(chunks, q.must_contain, 1, num_sources=num_sources),
-        "text_hit_all_at_3": text_hit_all_at_k(chunks, q.must_contain, 3, num_sources=num_sources),
-        "text_hit_all_at_6": text_hit_all_at_k(chunks, q.must_contain, 6, num_sources=num_sources),
+        "text_hit_all_at_1": text_hit_all_at_k(primary_chunks, q.must_contain, 1, num_sources=num_sources),
+        "text_hit_all_at_3": text_hit_all_at_k(primary_chunks, q.must_contain, 3, num_sources=num_sources),
+        "text_hit_all_at_6": text_hit_all_at_k(primary_chunks, q.must_contain, 6, num_sources=num_sources),
+        "text_hit_any_at_context": text_hit_any_at_context(chunks, q.must_contain),
+        "text_hit_all_at_context": text_hit_all_at_context(chunks, q.must_contain),
+        "context_chunks_count": ctx_count,
         "distinct_pages_at_6": dp6,
     }
 
@@ -227,6 +241,7 @@ def _evaluate_single_question(
         )
         retrieve_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         r_fields = _compute_retrieval_fields(q, chunks, num_sources)
+        primary_chunks = [c for c in chunks if c.neighbor_of is None]
 
         top6_refs = [
             RetrievedRef(
@@ -235,8 +250,9 @@ def _evaluate_single_question(
                 page=c.page,
                 score=c.score,
                 text_quality=c.text_quality,
+                neighbor_of=c.neighbor_of,
             )
-            for c in chunks[:6]
+            for c in primary_chunks[:6]
         ]
         rec = QuestionOutcomeRecord(
             id=q.id,
@@ -359,6 +375,7 @@ def _evaluate_single_question(
                 else:
                     non_supporting_cits.append(cit.n)
 
+    primary_chunks = [c for c in chunks if c.neighbor_of is None]
     top6_refs = [
         RetrievedRef(
             chunk_id=c.chunk_id,
@@ -366,8 +383,9 @@ def _evaluate_single_question(
             page=c.page,
             score=c.score,
             text_quality=c.text_quality,
+            neighbor_of=c.neighbor_of,
         )
-        for c in chunks[:6]
+        for c in primary_chunks[:6]
     ]
     cit_refs = [
         CitationRef(
@@ -376,6 +394,7 @@ def _evaluate_single_question(
             source=c.source,
             page=c.page,
             text_quality=c.text_quality,
+            neighbor_of=c.neighbor_of,
         )
         for c in ans_res.citations
     ]
@@ -453,6 +472,9 @@ def _aggregate_summary(
         clean = [float(v) for v in vals if v is not None]
         return round(sum(clean) / len(clean), 4) if clean else 0.0
 
+    mean_ctx_chunks = round(
+        _mean_float([r.context_chunks_count for r in primary_records]), 2
+    )
     retrieval_metrics = {
         "answerable_count": n_ans,
         "page_hit_at_1": _mean_bool([r.page_hit_at_1 for r in answerable_recs]),
@@ -466,9 +488,16 @@ def _aggregate_summary(
         "text_hit_all_at_1": _mean_bool([r.text_hit_all_at_1 for r in answerable_recs]),
         "text_hit_all_at_3": _mean_bool([r.text_hit_all_at_3 for r in answerable_recs]),
         "text_hit_all_at_6": _mean_bool([r.text_hit_all_at_6 for r in answerable_recs]),
+        "text_hit_any_at_context": _mean_bool(
+            [r.text_hit_any_at_context for r in answerable_recs]
+        ),
+        "text_hit_all_at_context": _mean_bool(
+            [r.text_hit_all_at_context for r in answerable_recs]
+        ),
         "distinct_pages_at_6": round(
             _mean_float([r.distinct_pages_at_6 for r in answerable_recs]), 2
         ),
+        "mean_context_chunks": mean_ctx_chunks,
     }
 
     outcome_counts = {
@@ -589,6 +618,7 @@ def _aggregate_summary(
         "total_p50_ms": p50(tot_lat),
         "total_p95_ms": p95(tot_lat),
         "total_max_ms": max_val(tot_lat),
+        "mean_context_chunks": mean_ctx_chunks,
         "avg_input_tokens": avg_in,
         "avg_output_tokens": avg_out,
         "avg_cost_per_query_usd": avg_cost,
@@ -934,6 +964,7 @@ def rescore_run(
             q_outcome = None
             unsup_nums = []
 
+        primary_chunks = [c for c in chunks if c.neighbor_of is None]
         top6_refs = [
             RetrievedRef(
                 chunk_id=c.chunk_id,
@@ -941,8 +972,9 @@ def rescore_run(
                 page=c.page,
                 score=c.score,
                 text_quality=c.text_quality,
+                neighbor_of=c.neighbor_of,
             )
-            for c in chunks[:6]
+            for c in primary_chunks[:6]
         ]
         cit_refs = [
             CitationRef(
@@ -951,6 +983,7 @@ def rescore_run(
                 source=c.source,
                 page=c.page,
                 text_quality=c.text_quality,
+                neighbor_of=c.neighbor_of,
             )
             for c in cits_full
         ]

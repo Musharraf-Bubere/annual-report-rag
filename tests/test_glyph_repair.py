@@ -225,6 +225,17 @@ def test_phase5d_extended_glyph_mappings_and_leading_e() -> None:
     rep_dae, _, _ = repair_degraded_page_text(raw_dae)
     assert rep_dae == "for Agentic healthcare at the of the Year"
 
+    # 5. Phase 5e Step 4 fix: 'deŵo' -> 'demo' even when 'demo' has 0 occurrences on clean pages,
+    # while 'dotaů' -> 'Total' (when 'Total' is in clean vocab) and 'd\x12^' -> 'TC^' still work.
+    empty_exact: dict[str, int] = {"Total": 10}
+    empty_lower: dict[str, int] = {"total": 10}
+    rep_demo, _, _ = repair_degraded_page_text(
+        "healthĐaƌe deŵo and dotaů and d\x12^",
+        clean_vocab_exact=empty_exact,
+        clean_vocab_lower=empty_lower,
+    )
+    assert rep_demo == "healthcare demo and Total and TC^"
+
 
 def test_phase5c_pdf_safety_invariants() -> None:
     """Requirement 3(i)-(iii): Verifies non-degraded byte-identity, digit multiset preservation, and idempotency on PDFs."""

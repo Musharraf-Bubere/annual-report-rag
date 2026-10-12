@@ -50,6 +50,10 @@ class CitationOut(BaseModel):
         ...,
         description="First 300 characters of the cited chunk text.",
     )
+    neighbor_of: str | None = Field(
+        default=None,
+        description="Primary chunk ID this passage was expanded from as a neighbour, or None if primary.",
+    )
 
 
 class RetrievedChunkOut(BaseModel):
@@ -66,6 +70,10 @@ class RetrievedChunkOut(BaseModel):
     text_quality: str = Field(
         ...,
         description="Page text quality state ('clean', 'repaired', or 'degraded').",
+    )
+    neighbor_of: str | None = Field(
+        default=None,
+        description="Primary chunk ID this passage was expanded from as a neighbour, or None if primary.",
     )
 
 

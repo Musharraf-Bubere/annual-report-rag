@@ -84,12 +84,41 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Validate golden_questions.json and check expected pages in ChromaStore without running queries.",
     )
+    parser.add_argument(
+        "--neighbor-window",
+        type=int,
+        default=None,
+        help="Override retrieval.neighbor_window for this evaluation run.",
+    )
+    parser.add_argument(
+        "--max-context-chunks",
+        type=int,
+        default=None,
+        help="Override retrieval.max_context_chunks for this evaluation run.",
+    )
     return parser.parse_args()
 
 
 def run_cli(args: argparse.Namespace) -> int:
     """Loads golden set, validates against ChromaStore, and optionally executes run_eval or rescore_run."""
+    from dataclasses import replace
+
     settings = load_settings()
+    if args.neighbor_window is not None or args.max_context_chunks is not None:
+        new_ret = replace(
+            settings.retrieval,
+            neighbor_window=(
+                args.neighbor_window
+                if args.neighbor_window is not None
+                else settings.retrieval.neighbor_window
+            ),
+            max_context_chunks=(
+                args.max_context_chunks
+                if args.max_context_chunks is not None
+                else settings.retrieval.max_context_chunks
+            ),
+        )
+        settings = replace(settings, retrieval=new_ret)
     golden = load_golden_set(settings.evaluation.golden_set_path)
 
     store = ChromaStore(

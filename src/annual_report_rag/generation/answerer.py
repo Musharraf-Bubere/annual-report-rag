@@ -32,7 +32,7 @@ class QueryDeps:
 
 @dataclass(frozen=True)
 class Citation:
-    """Represents a validated citation pointing to a specific retrieved chunk."""
+    """Represents a validated citation pointing to a specific retrieved chunk (primary or neighbour)."""
 
     n: int
     chunk_id: str
@@ -41,6 +41,7 @@ class Citation:
     page: int
     text_quality: str
     excerpt: str
+    neighbor_of: str | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,7 @@ def resolve_citations(
                 page=chunk.page,
                 text_quality=chunk.text_quality,
                 excerpt=chunk.text[:300],
+                neighbor_of=chunk.neighbor_of,
             )
         )
 

@@ -595,3 +595,25 @@ This document captures key design decisions, their rationale, alternatives consi
   2. Update `loader.clean_text` (`re.sub(r"[^\S\x1c]+", " ", text).strip(" \t\n\r\f\v")`) and `glyph_repair._TOKEN_SPLIT_RE` (`re.compile(r"[^\S\x1c]+")`) so `U+001C` is preserved as a token character until `repair_degraded_page_text` translates it to `'E'`.
 * **Reason:** Reduces residual dropped tokens across the 30 degraded TCS pages from `40` to **`12`** (`226/238 = 95.0%` repaired; `22/30` degraded pages now have `0` dropped tokens), deterministically restores `"Earnings per share (in ₹)"` on page 58 and `"Earnings per share in"` on page 69, and preserves all Phase 5c safety invariants (non-degraded pages byte-identical, digit tokens never altered or lost, idempotent).
 
+---
+
+### Decision 48: Neighbour-Chunk Expansion at Retrieval Time (`retrieval.neighbor_window`, `retrieval.max_context_chunks`) and Primary-Only Ranking Metrics
+
+* **Context:** After Phases 5a–5d, `q03` (*"What dividend did TCS declare for fiscal 2026?"*) still failed (`WRONG`) even though `tcs-ar-26-p24-c5` (rank `#2`, `score=0.7534`) and `tcs-ar-26-p36-c1` (rank `#3`, `score=0.7522`) were in the top 3 primary hits. Because our `1,000`-character chunker split each page across chunk boundaries, the actual `₹110` per-share figure lived in the immediately preceding same-page chunks `tcs-ar-26-p24-c4` (rank `#12`) and `tcs-ar-26-p36-c0` (rank `#85`), while `p36-c1` started at `"The total Dividend on equity shares for FY 2026 is 11,000% of the paid-up value of each share"`.
+* **Choice:**
+  1. Add `retrieval.neighbor_window: int = 0` (default `0` so all prior baselines reproduce bit-for-bit) and `retrieval.max_context_chunks: int | None = None` (`null` by default).
+  2. In `retrieval/retriever.py` (`_expand_neighbors`), when `neighbor_window > 0`, iterate over the top $N = 3$ primary hits and look up same-source, same-page chunks `c - w .. c + w` in `ChromaStore.get_by_ids()`. Deduplicate against all primary hits and previously added neighbours, append neighbours **after** all primary hits with `neighbor_of=<primary_chunk_id>` (`score=0.0`), and cap total context length at `max_context_chunks`.
+  3. Preserve 1:1 `[n]` citation numbering over the full context list (`1..len(chunks)`) and propagate `neighbor_of: str | None = None` onto `Citation` (`generation/answerer.py`) and API schemas so every cited chunk records whether it was a primary hit (`neighbor_of=None`) or a neighbour (`neighbor_of="<chunk_id>"`).
+  4. Keep primary retrieval metrics (`page_hit@1/3/6`, `MRR`, `text_hit_any@1/3/6`, `text_hit_all@1/3/6`, `distinct_pages@6`) computed strictly on primary hits (`neighbor_of is None`), and add `text_hit_any@context`, `text_hit_all@context`, and `mean_context_chunks` over the final expanded context set.
+* **Reason:** Fixes chunk-boundary splits on top-3 hits without re-indexing or altering primary retrieval rankings. On `exp5e-neighbors-full` (`neighbor_window=1`, `max_context_chunks=10`), `text_hit_all@context` rises from `0.8800` (`22/25`) to **`0.9200` (`23/25`)**, and `q03` moves from `WRONG` to **`CORRECT`** (citing `[8] tcs-ar-26-p24-c4 (neighbor_of=tcs-ar-26-p24-c5)`, `[3] tcs-ar-26-p36-c1 (primary)`, and `[9] tcs-ar-26-p36-c0 (neighbor_of=tcs-ar-26-p36-c1)`), raising `CORRECT` from `19` to `20` and `faithfulness_rate` to `1.0000` (`21/21`).
+* **Trade-off:** Increases `mean_context_chunks` from `6.00` to `9.41` and `avg_input_tokens` from `2,063.0` to `2,840.1` (`+$0.000250`/query vs `exp5d-glyph-full`). Also, because only the top $N = 3$ primary hits are expanded, a split chunk at primary rank `#5` (such as `tcs-ar-26-p36-c2` on `q14`, where ranks `#1`–`#3` are all on Page 24) does not receive its neighbour `p36-c1`.
+
+---
+
+### Decision 49: Tightening Rule 1b(i) Word-Initial `'d' -> 'T'` Gating (`'deŵo' -> 'demo'`)
+
+* **Context:** In Phase 5c/5d, `tcs-ar-26-p22-c3` (Page 22, Awards and Accolades) stored `"Amazon #1 for Agentic AI healthcare Temo at the Amazon Nova Partner Demo competition"` because the raw token `'deŵo'` contained conflict-free `'ŵ'` (`U+0175` $\to$ `'m'`), triggering Rule 1b(i). Since `'demo'` appeared `0` times on the 326 clean pages of `tcs-ar-26.pdf` (`clean_vocab_lower["demo"] == 0 < 5`), `not cf_is_clean_word` evaluated to `True`, and the word-initial `'d' -> 'T'` rule converted lowercase `'d'` to uppercase `'T'` (`'Temo'`).
+* **Choice:** In `repair_degraded_token` (`ingestion/glyph_repair.py`), require that word-initial `'d' -> 'T'` in Rule 1b(i) only fires when `not cf_is_clean_word and (t_is_clean_word or next_is_upper)`—i.e., either the `'T'`-repaired word (`"T" + cf_stripped[1:]`) itself exists in the clean-page vocabulary (`count >= 5`, which preserves `'dotaů' -> 'Total'` on Page 170 where `'Total'` has clean count `453`), or the next character is uppercase (preserving `'d\x12^' -> 'TC^'` on Pages 20, 24, 170).
+* **Reason:** Prevents turning rare lowercase words starting with `'d'` (such as `'deŵo' -> 'demo'`) into nonsense `'T...'` words when `'T...'` is not in the clean vocabulary, while preserving 100% of valid `'d' -> 'T'` repairs across all 30 degraded TCS pages.
+
+

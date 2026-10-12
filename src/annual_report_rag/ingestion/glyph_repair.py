@@ -243,6 +243,17 @@ def repair_degraded_token(
             if cf_stripped
             else False
         )
+        t_candidate_stripped = ("T" + cf_stripped[1:]) if cf_stripped else ""
+        t_is_clean_word = (
+            _vocab_frequency(t_candidate_stripped, clean_vocab_exact, clean_vocab_lower)
+            >= min_clean_count
+            if t_candidate_stripped
+            else False
+        )
+        next_is_upper = (
+            first_core_idx + 1 < len(cf_token)
+            and cf_token[first_core_idx + 1].isupper()
+        )
 
         out_chars: list[str] = []
         ambig_count = 0
@@ -252,7 +263,13 @@ def repair_degraded_token(
             elif orig_ch in AMBIGUOUS_ASCII_MAP:
                 if orig_ch == "d":
                     # 'd' -> 'T' is uppercase 'T' at word start only when conflict-free word is not already clean
-                    if i == first_core_idx and not cf_is_clean_word:
+                    # AND either the 'T'-substituted word is a clean vocabulary word (e.g. 'dotaů' -> 'Total')
+                    # or the next character is uppercase (e.g. 'd\x12^' -> 'TC^').
+                    if (
+                        i == first_core_idx
+                        and not cf_is_clean_word
+                        and (t_is_clean_word or next_is_upper)
+                    ):
                         out_chars.append("T")
                         ambig_count += 1
                     else:

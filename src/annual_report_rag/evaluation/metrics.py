@@ -201,6 +201,33 @@ def text_hit_all_at_k(
     )
 
 
+def text_hit_any_at_context(
+    context_chunks: Sequence[HasSourcePageAndText],
+    must_contain: Sequence[str],
+) -> bool:
+    """Returns True if any chunk in the full context set satisfies any must_contain entry."""
+    if not must_contain or not context_chunks:
+        return False
+    return any(
+        entry_matches_text(chunk.text, entry)
+        for chunk in context_chunks
+        for entry in must_contain
+    )
+
+
+def text_hit_all_at_context(
+    context_chunks: Sequence[HasSourcePageAndText],
+    must_contain: Sequence[str],
+) -> bool:
+    """Returns True if every must_contain entry is covered by the union of the full context set."""
+    if not must_contain or not context_chunks:
+        return False
+    return all(
+        any(entry_matches_text(chunk.text, entry) for chunk in context_chunks)
+        for entry in must_contain
+    )
+
+
 def distinct_pages_at_k(
     retrieved: Sequence[HasSourcePageAndText],
     k: int = 6,

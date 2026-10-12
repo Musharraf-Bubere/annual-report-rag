@@ -76,13 +76,15 @@ class IngestionConfig:
 
 @dataclass(frozen=True)
 class RetrievalConfig:
-    """Holds retrieval search parameters such as top-k results, score threshold, input limit, query prefix, and per-page chunk cap."""
+    """Holds retrieval search parameters such as top-k results, score threshold, input limit, query prefix, per-page cap, and neighbour expansion."""
 
     top_k: int = 6
     min_score: float = 0.0
     max_question_chars: int = 1000
     query_prefix: str | None = None
     max_chunks_per_page: int | None = None
+    neighbor_window: int = 0
+    max_context_chunks: int | None = None
 
 
 @dataclass(frozen=True)
@@ -225,12 +227,18 @@ def parse_retrieval_config(data: dict[str, Any]) -> RetrievalConfig:
     max_chunks_per_page = (
         int(raw_max_per_page) if raw_max_per_page is not None else None
     )
+    raw_neighbor_window = data.get("neighbor_window", 0)
+    neighbor_window = int(raw_neighbor_window) if raw_neighbor_window is not None else 0
+    raw_max_ctx = data.get("max_context_chunks")
+    max_context_chunks = int(raw_max_ctx) if raw_max_ctx is not None else None
     return RetrievalConfig(
         top_k=int(data.get("top_k", 6)),
         min_score=float(data.get("min_score", 0.0)),
         max_question_chars=int(data.get("max_question_chars", 1000)),
         query_prefix=query_prefix,
         max_chunks_per_page=max_chunks_per_page,
+        neighbor_window=neighbor_window,
+        max_context_chunks=max_context_chunks,
     )
 
 

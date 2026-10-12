@@ -15,6 +15,7 @@ class RetrievedRef:
     page: int
     score: float
     text_quality: str
+    neighbor_of: str | None = None
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class CitationRef:
     source: str
     page: int
     text_quality: str
+    neighbor_of: str | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,9 @@ class QuestionOutcomeRecord:
     text_hit_all_at_1: bool | None = None
     text_hit_all_at_3: bool | None = None
     text_hit_all_at_6: bool | None = None
+    text_hit_any_at_context: bool | None = None
+    text_hit_all_at_context: bool | None = None
+    context_chunks_count: int = 0
     distinct_pages_at_6: int = 0
     judge_faithful: bool | None = None
     judge_parse_ok: bool | None = None
@@ -149,7 +154,14 @@ def format_markdown_report(summary: dict[str, Any]) -> str:
     lines.append(f"| `text_hit_all@1` | {ret.get('text_hit_all_at_1', 0.0):.4f} |")
     lines.append(f"| `text_hit_all@3` | {ret.get('text_hit_all_at_3', 0.0):.4f} |")
     lines.append(f"| `text_hit_all@6` | {ret.get('text_hit_all_at_6', 0.0):.4f} |")
+    lines.append(
+        f"| `text_hit_any@context` | {ret.get('text_hit_any_at_context', ret.get('text_hit_any_at_6', 0.0)):.4f} |"
+    )
+    lines.append(
+        f"| `text_hit_all@context` | {ret.get('text_hit_all_at_context', ret.get('text_hit_all_at_6', 0.0)):.4f} |"
+    )
     lines.append(f"| `distinct_pages@6` | {ret.get('distinct_pages_at_6', 0.0):.2f} |")
+    lines.append(f"| `mean_context_chunks` | {ret.get('mean_context_chunks', 0.0):.2f} |")
     lines.append("")
 
     lines.append("## 2. Answer Metrics")
@@ -236,6 +248,9 @@ def format_markdown_report(summary: dict[str, Any]) -> str:
         f"{perf.get('retrieve_p50_ms', 0.0):.2f} ms (n={ret_n}) / "
         f"{perf.get('retrieve_p95_ms', 0.0):.2f} ms (n={ret_n}) / "
         f"{perf.get('retrieve_max_ms', 0.0):.2f} ms (n={ret_n}) |"
+    )
+    lines.append(
+        f"| `mean_context_chunks` | {perf.get('mean_context_chunks', ret.get('mean_context_chunks', 0.0)):.2f} |"
     )
     if not retrieval_only:
         lines.append(
@@ -406,7 +421,10 @@ def compare_metrics_dicts(
         ("text_hit_all@1", ("retrieval", "text_hit_all_at_1")),
         ("text_hit_all@3", ("retrieval", "text_hit_all_at_3")),
         ("text_hit_all@6", ("retrieval", "text_hit_all_at_6")),
+        ("text_hit_any@context", ("retrieval", "text_hit_any_at_context")),
+        ("text_hit_all@context", ("retrieval", "text_hit_all_at_context")),
         ("distinct_pages@6", ("retrieval", "distinct_pages_at_6")),
+        ("mean_context_chunks", ("retrieval", "mean_context_chunks")),
         ("CORRECT", ("answers", "outcome_counts", "CORRECT")),
         ("WRONG", ("answers", "outcome_counts", "WRONG")),
         ("FALSE_REFUSAL", ("answers", "outcome_counts", "FALSE_REFUSAL")),
@@ -416,6 +434,8 @@ def compare_metrics_dicts(
         ("unsupported_number_questions", ("answers", "questions_with_unsupported_numbers")),
         ("faithfulness_rate", ("faithfulness", "faithfulness_rate")),
         ("citation_precision", ("faithfulness", "citation_precision")),
+        ("avg_input_tokens", ("performance", "avg_input_tokens")),
+        ("avg_cost_per_query_usd", ("performance", "avg_cost_per_query_usd")),
         ("retrieve_p50_ms", ("performance", "retrieve_p50_ms")),
         ("retrieve_p95_ms", ("performance", "retrieve_p95_ms")),
         ("retrieve_max_ms", ("performance", "retrieve_max_ms")),
@@ -436,6 +456,14 @@ def compare_metrics_dicts(
     for name, path in metric_rows:
         va = _get_nested(metrics_a, path)
         vb = _get_nested(metrics_b, path)
+        if va is None and path == ("retrieval", "text_hit_any_at_context"):
+            va = _get_nested(metrics_a, ("retrieval", "text_hit_any_at_6"))
+        if vb is None and path == ("retrieval", "text_hit_any_at_context"):
+            vb = _get_nested(metrics_b, ("retrieval", "text_hit_any_at_6"))
+        if va is None and path == ("retrieval", "text_hit_all_at_context"):
+            va = _get_nested(metrics_a, ("retrieval", "text_hit_all_at_6"))
+        if vb is None and path == ("retrieval", "text_hit_all_at_context"):
+            vb = _get_nested(metrics_b, ("retrieval", "text_hit_all_at_6"))
         if va is None and vb is None:
             continue
         if isinstance(va, int) and isinstance(vb, int):
@@ -447,7 +475,8 @@ def compare_metrics_dicts(
             fb = float(vb) if vb is not None else 0.0
             delta_f = fb - fa
             sign = "+" if delta_f > 0 else ""
-            lines.append(f"| `{name}` | {fa:.4f} | {fb:.4f} | {sign}{delta_f:.4f} |")
+            fmt = ".6f" if name == "avg_cost_per_query_usd" else ".4f"
+            lines.append(f"| `{name}` | {fa:{fmt}} | {fb:{fmt}} | {sign}{delta_f:{fmt}} |")
 
     lines.append("")
     lines.append("## Per-Question Outcome Changes")

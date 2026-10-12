@@ -10,7 +10,7 @@ from annual_report_rag.retrieval.store import ChromaStore, QueryResult
 
 @dataclass(frozen=True)
 class RetrievedChunk:
-    """Represents a retrieved passage with provenance metadata and similarity score."""
+    """Represents a retrieved passage with provenance metadata, similarity score, and optional neighbour provenance."""
 
     chunk_id: str
     text: str
@@ -19,9 +19,13 @@ class RetrievedChunk:
     score: float
     text_quality: str = "clean"
     extraction_method: str = "default"
+    neighbor_of: str | None = None
 
 
-def _to_retrieved_chunk(hit: QueryResult) -> RetrievedChunk:
+def _to_retrieved_chunk(
+    hit: QueryResult,
+    neighbor_of: str | None = None,
+) -> RetrievedChunk:
     """Converts a store QueryResult into a RetrievedChunk."""
     return RetrievedChunk(
         chunk_id=hit.chunk_id,
@@ -31,7 +35,71 @@ def _to_retrieved_chunk(hit: QueryResult) -> RetrievedChunk:
         score=hit.score,
         text_quality=hit.text_quality,
         extraction_method=hit.extraction_method,
+        neighbor_of=neighbor_of,
     )
+
+
+def _parse_chunk_id_index(chunk_id: str) -> tuple[str, int] | None:
+    """Parses a chunk ID of the form '<prefix>-c<index>' into (prefix, index), or returns None."""
+    if "-c" not in chunk_id:
+        return None
+    prefix, idx_str = chunk_id.rsplit("-c", 1)
+    if not prefix or not idx_str.isdigit():
+        return None
+    return prefix, int(idx_str)
+
+
+def _expand_neighbors(
+    primary_chunks: list[RetrievedChunk],
+    store: ChromaStore,
+    neighbor_window: int,
+    max_context_chunks: int | None,
+    top_n: int = 3,
+) -> list[RetrievedChunk]:
+    """Expands the top N primary hits with same-source, same-page c-w..c+w neighbours, deduplicated and capped."""
+    if neighbor_window <= 0:
+        if max_context_chunks is not None and max_context_chunks > 0:
+            return primary_chunks[:max_context_chunks]
+        return primary_chunks
+
+    seen_ids: set[str] = {c.chunk_id for c in primary_chunks}
+    candidate_requests: list[tuple[str, RetrievedChunk]] = []
+
+    for primary in primary_chunks[:top_n]:
+        parsed = _parse_chunk_id_index(primary.chunk_id)
+        if parsed is None:
+            continue
+        prefix, c_idx = parsed
+        for offset in range(1, neighbor_window + 1):
+            for cand_idx in (c_idx - offset, c_idx + offset):
+                if cand_idx < 0:
+                    continue
+                cand_id = f"{prefix}-c{cand_idx}"
+                if cand_id in seen_ids:
+                    continue
+                seen_ids.add(cand_id)
+                candidate_requests.append((cand_id, primary))
+
+    if not candidate_requests:
+        if max_context_chunks is not None and max_context_chunks > 0:
+            return primary_chunks[:max_context_chunks]
+        return primary_chunks
+
+    lookup_ids = [cid for cid, _ in candidate_requests]
+    found_map = store.get_by_ids(lookup_ids)
+
+    neighbors: list[RetrievedChunk] = []
+    for cand_id, primary in candidate_requests:
+        hit = found_map.get(cand_id)
+        if hit is None:
+            continue
+        if hit.source == primary.source and hit.page == primary.page:
+            neighbors.append(_to_retrieved_chunk(hit, neighbor_of=primary.chunk_id))
+
+    combined = list(primary_chunks) + neighbors
+    if max_context_chunks is not None and max_context_chunks > 0:
+        return combined[:max_context_chunks]
+    return combined
 
 
 def _apply_page_cap(
@@ -95,7 +163,7 @@ def retrieve(
     top_k: int | None = None,
     sources: list[str] | None = None,
 ) -> list[RetrievedChunk]:
-    """Embeds a user question and retrieves top-k passages routed by company aliases.
+    """Embeds a user question and retrieves top-k passages routed by company aliases, with optional neighbour expansion.
 
     Args:
         question: User's natural language question.
@@ -106,7 +174,7 @@ def retrieve(
         sources: Optional explicit list of source stems to filter retrieval.
 
     Returns:
-        list[RetrievedChunk]: Ranked retrieved passages passing min_score threshold.
+        list[RetrievedChunk]: Ranked primary passages followed by any configured same-page neighbours.
     """
     cleaned_question = question.strip()
     if not cleaned_question or store.count() == 0:
@@ -140,4 +208,10 @@ def retrieve(
     if min_score > 0.0:
         raw_hits = [hit for hit in raw_hits if hit.score >= min_score]
 
-    return [_to_retrieved_chunk(hit) for hit in raw_hits]
+    primary_chunks = [_to_retrieved_chunk(hit) for hit in raw_hits]
+    return _expand_neighbors(
+        primary_chunks=primary_chunks,
+        store=store,
+        neighbor_window=settings.retrieval.neighbor_window,
+        max_context_chunks=settings.retrieval.max_context_chunks,
+    )

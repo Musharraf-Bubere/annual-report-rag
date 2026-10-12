@@ -261,3 +261,41 @@ In Phase 5d, we extended `CONFLICT_FREE_GLYPH_MAP` from `34` to `43` mappings (`
 ### B. `q03` Dividend Chunk Analysis (`Step 6`)
 - **`tcs-ar-26-p24-c4`** contains the repaired sentence: `"Based on the company’s performance, the Board of Directors have declared three interim dividends of ₹11 each, a special dividend of ₹46, and recommended a final dividend of ₹31 (pending shareholders' approval at this A'M), for a total of ₹110 per share for FY 2026."`
 - For `q03` (`"What dividend did TCS declare for fiscal 2026?"`), `tcs-ar-26-p24-c4` ranks **`12` / `1,426`** (`score = 0.7216`), while `tcs-ar-26-p24-c5` (rank 2, `0.7524`), `tcs-ar-26-p24-c6` (rank 5, `0.7429`), and `tcs-ar-26-p24-c1` (rank 6, `0.7330`) take 3 of the top 6 slots, leaving `p24-c4` just outside top-6.
+
+---
+
+## 10. Phase 5e: Neighbour-Chunk Expansion (`exp5e-neighbors-retrieval` & `exp5e-neighbors-full` vs. `baseline-v3` and `exp5d-glyph-full`)
+
+In Phase 5e (no re-index), we added `retrieval.neighbor_window` (default `0`) and `retrieval.max_context_chunks` (default `null`). With `neighbor_window=1` and `max_context_chunks=10`, after `top_k=6` primary retrieval, for each of the top $N = 3$ primary hits we append same-source, same-page neighbours `c-1` and `c+1` (deduplicated and tagged `neighbor_of=<chunk_id>`), capped at `10` total context chunks. Primary retrieval metrics (`page_hit@k`, `MRR`, `text_hit_any/all@k`) continue to be computed strictly on the primary ranking, while `text_hit_any@context`, `text_hit_all@context`, and `mean_context_chunks` measure the expanded context window passed to the generator.
+
+### A. Aggregate Comparison (`baseline-v3` vs. `exp5d-glyph-full` vs. `exp5e-neighbors-full`)
+
+| Metric | `baseline-v3` | `exp5d-glyph-full` | `exp5e-neighbors-full` | Delta (`5e - v3`) | Delta (`5e - 5d`) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| `page_hit@1` / `@3` / `@6` | `0.4800` / `0.8000` / `0.8400` | `0.4800` / `0.8000` / `0.8400` | `0.4800` / `0.8000` / `0.8400` | `0.0000` | `0.0000` |
+| `MRR` | `0.6480` | `0.6413` | `0.6413` | `-0.0067` | `0.0000` |
+| `text_hit_any@1` / `@3` / `@6` | `0.6000` / `0.7200` / `0.8400` | `0.6000` / `0.7200` / `0.8800` | `0.6000` / `0.7200` / `0.8800` | `+0.0400` (`@6`) | `0.0000` |
+| `text_hit_all@1` / `@3` / `@6` | `0.5600` / `0.7200` / `0.8400` | `0.5600` / `0.7200` / `0.8800` | `0.5600` / `0.7200` / `0.8800` | `+0.0400` (`@6`) | `0.0000` |
+| `text_hit_any@context` | `0.8400` | `0.8800` | **`0.9200`** | **`+0.0800`** | **`+0.0400`** |
+| `text_hit_all@context` | `0.8400` | `0.8800` | **`0.9200`** | **`+0.0800`** | **`+0.0400`** |
+| `distinct_pages@6` | `5.00` | `4.88` | `4.88` | `-0.12` | `0.00` |
+| `mean_context_chunks` | `6.21` (primary) | `6.21` (primary) | **`9.41`** | `+3.20` | `+3.20` |
+| `CORRECT` | `19` | `19` | **`20`** | **`+1` (`q03`)** | **`+1` (`q03`)** |
+| `WRONG` | `1` | `3` | **`2`** | `+1` (`q05`, `q14` vs `q03`) | **`-1` (`q03`)** |
+| `FALSE_REFUSAL` | `5` | `3` | `3` | `-2` (`q05`, `q14`) | `0` |
+| `CORRECT_REFUSAL` | `4` | `4` | `4` | `0` | `0` |
+| `ANSWERED_ANYWAY` | `0` | `0` | `0` | `0` | `0` |
+| `grounded_rate` (answerable) | `0.8000` | `0.8800` | `0.8400` | `+0.0400` | `-0.0400` |
+| `questions_with_unsupported_numbers` | `0` | `1` (`['q05']`) | `1` (`['q05']`) | `+1` | `0` |
+| `faithfulness_rate` | `1.0000` (`20/20`) | `0.9545` (`21/22`) | **`1.0000` (`21/21`)** | `0.0000` | **`+0.0455`** |
+| `citation_precision` | `1.0000` (`34/34`) | `1.0000` (`39/39`) | **`1.0000` (`38/38`)** | `0.0000` | `0.0000` |
+| `avg_input_tokens` | `2051.2` | `2063.0` | `2840.1` | `+788.9` | `+777.1` |
+| `avg_cost_per_query_usd` | `$0.000691` | `$0.000701` | `$0.000951` | `+$0.000260` | `+$0.000250` |
+
+### B. Per-Question Changes & Honest Summary Across Phases 5a–5e
+1. **Honest Assessment of Phases 5a–5d vs. Phase 5e**:
+   - Phases **5a–5d** did **not** increase the end-to-end `CORRECT` count on the locked 6-chunk retrieval configuration (`19 CORRECT` in `baseline-v2`, `baseline-v3`, `exp5a-pagecap2`, `exp5c-glyph-repair`, and `exp5d-glyph-full`). Phase 5c/5d's deterministic glyph repair was essential for restoring corrupted words on degraded TCS pages (such as `"excluding exceptional items"` on Page 36 and `"₹110"` on Page 24, lifting `text_hit_all@6` from `0.8400` to `0.8800`), but because the target figures and their subject labels were split across adjacent chunks on Pages 24 and 36, glyph repair alone moved `q05` and `q14` from `FALSE_REFUSAL` to `WRONG` without increasing `CORRECT`.
+   - **Phase 5e (`neighbor_window=1`, `max_context_chunks=10`)** directly resolves the chunk-boundary split on **`q03`**: expanding primary ranks `#2` (`tcs-ar-26-p24-c5`) and `#3` (`tcs-ar-26-p36-c1`) appends neighbour chunks `[8] tcs-ar-26-p24-c4` (`neighbor_of=tcs-ar-26-p24-c5`) and `[9] tcs-ar-26-p36-c0` (`neighbor_of=tcs-ar-26-p36-c1`), both of which contain the `₹110` per-share total dividend. As a result, `text_hit_all@context` rises to **`0.9200` (`23/25`)**, **`q03` moves from `WRONG` to `CORRECT`**, `CORRECT` rises from **`19` to `20`** (`0` regressions on any previously `CORRECT` question), and `faithfulness_rate` returns to **`1.0000` (`21/21`)**.
+2. **Why `q14` Remains `WRONG` in Phase 5e**:
+   - On `q14`, the top $N = 3$ primary hits are all on Page 24 (`[1] tcs-ar-26-p24-c5`, `[2] tcs-ar-26-p24-c3`, `[3] tcs-ar-26-p24-c1`), while `tcs-ar-26-p36-c2` (`"...₹52,820 crore, registering a growth of 8.8%..."`) sits at primary rank `#5`. Because neighbour expansion only expands the top $N = 3$ primary hits, `tcs-ar-26-p36-c1` (which holds the consolidated subject `"The profit for the year attributable to shareholders (excluding exceptional items)"` for `p36-c2`'s opening overlap) is not added to the context unless Page 24 crowding is also capped (`max_chunks_per_page=2`) or $N$ is increased.
+

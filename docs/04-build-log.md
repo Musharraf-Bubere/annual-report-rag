@@ -688,3 +688,40 @@ Applied the conflict-free glyph repair and clean-page vocabulary safety rules to
   - **vs. `exp5c-glyph-repair`**: Identical across all retrieval and generation metrics (`0` per-question outcome changes: `19 CORRECT`, `3 WRONG`, `3 FALSE_REFUSAL`, `4 CORRECT_REFUSAL`, `0 ANSWERED_ANYWAY`, `text_hit_all@6 = 0.8800`, `faithfulness_rate = 0.9545`, `citation_precision = 1.0000`).
   - **vs. `baseline-v3`**: Same deltas as `exp5c-glyph-repair` (`text_hit_any@6` & `text_hit_all@6`: `0.8400 -> 0.8800` `+0.0400`; `q05` & `q14`: `FALSE_REFUSAL -> WRONG`; `0` regressions on `CORRECT` questions).
 - **Step 6 (`tcs-ar-26-p24-c4` & `q03`)**: `tcs-ar-26-p24-c4` holds the sentence `"Based on the company’s performance, the Board of Directors have declared three interim dividends of ₹11 each, a special dividend of ₹46, and recommended a final dividend of ₹31 (pending shareholders' approval at this A'M), for a total of ₹110 per share for FY 2026."` (repaired from `U+0F24` `༤` to `₹110`). For `q03`'s query, `tcs-ar-26-p24-c4` ranks **`12` / `1,426`** (`score = 0.7216`), and `tcs-ar-26-p36-c0` ranks **`85` / `1,426`** (`score = 0.6551`).
+
+---
+
+## Phase 5e — Neighbour-Chunk Expansion at Retrieval Time & `'deŵo' -> 'demo'` Fix (No Re-Index)
+
+### 1. Honest Recap of Phases 5a–5d Before Phase 5e
+- Across Phases 5a–5d, our locked 6-chunk configuration (`top_k=6, neighbor_window=0`) remained at **`19 CORRECT` out of `29` ready `dev` questions** (`19/25` answerable, `4/4` `CORRECT_REFUSAL`):
+  - **Phase 5a**: Cheap retrieval knobs (`query_prefix`, `max_chunks_per_page=2`, `top_k=8/10`) showed that `q14` was crowded out by 4 chunks of Page 24, while `q03` (`p36-c0` at rank 78) and `q05` (`p8-c7` at rank 100) missed the top 6. (`exp5a-topk8` reached `20 CORRECT` only via stochastic generation variance on `q22`, while `exp5a-pagecap2` stayed at `19 CORRECT`.)
+  - **Phase 5b**: Fixed the date comma-grouping false alarm in `find_unsupported_numbers()` (`"March 31, 2025"`), established `baseline-v3` (`19 CORRECT`, `1 WRONG`, `5 FALSE_REFUSAL`, `4 CORRECT_REFUSAL`), and proved that runtime RapidOCR corrupted digits (`₹52,820` $\to$ `352,820`), whereas deterministic glyph mapping preserved 100% of digits.
+  - **Phases 5c & 5d**: Repaired `226/238` (`95.0%`) of corrupted tokens across the 30 degraded TCS pages (`text_hit_all@6` improved from `0.8400` to `0.8800`), moving `q05` and `q14` from `FALSE_REFUSAL` to `WRONG`, but gave **no end-to-end `CORRECT` count gain (`19 CORRECT`)** because chunk-boundary splits left the `₹110` dividend figure (`tcs-ar-26-p24-c4` and `tcs-ar-26-p36-c0`) and `q14`'s subject sentence (`tcs-ar-26-p36-c1`) outside the retrieved chunks.
+
+### 2. Step 1: Neighbour-Chunk Expansion Implementation (`retriever.py`, `store.py`, `config.py`, `answerer.py`, `metrics.py`, `runner.py`)
+- Added `retrieval.neighbor_window: int = 0` (default `0`) and `retrieval.max_context_chunks: int | None = None` (default `null`) to `config/settings.yaml` and `RetrievalConfig`, plus CLI overrides `--neighbor-window` and `--max-context-chunks` in `scripts/run_eval.py`.
+- Added `ChromaStore.get_by_ids(ids: list[str]) -> dict[str, QueryResult]` for direct chunk lookup by ID (`{source}-p{page}-c{idx}`).
+- Implemented `_expand_neighbors()` in `src/annual_report_rag/retrieval/retriever.py`: after `top_k` primary retrieval, for each of the top $N = 3$ primary hits, fetches `c - 1` and `c + 1` (for `neighbor_window=1`) from the same `source` and `page` if they exist and are not already in the context. Primary hits keep their order and score (`neighbor_of=None`); neighbours are appended after all primary hits with `neighbor_of=<primary_chunk_id>` and capped at `max_context_chunks`.
+- Propagated `neighbor_of: str | None = None` to `Citation`, `CitationOut`, and `RetrievedChunkOut` so `[n]` maps 1:1 to the context list and each citation records whether it cited a primary or neighbour chunk.
+- Kept primary retrieval metrics (`page_hit@1/3/6`, `MRR`, `text_hit_any@1/3/6`, `text_hit_all@1/3/6`, `distinct_pages@6`) computed strictly on primary hits (`neighbor_of is None`), and added `text_hit_any@context`, `text_hit_all@context`, and `mean_context_chunks` over the final context set.
+
+### 3. Step 2 (Read-Only): Neighbour Check on `q03` and `q14` (`neighbor_window=1`, `max_context_chunks=10`)
+- **`q03` (`"What dividend did TCS declare for fiscal 2026?"`)**:
+  - Primary top 3: `[1] tcs-ar-26-p33-c6`, `[2] tcs-ar-26-p24-c5`, `[3] tcs-ar-26-p36-c1`.
+  - Appended 4 neighbours (`[7] tcs-ar-26-p33-c5`, `[8] tcs-ar-26-p24-c4`, `[9] tcs-ar-26-p36-c0`, `[10] tcs-ar-26-p36-c2`). Both **`[8] tcs-ar-26-p24-c4`** (`"...for a total of ₹110 per share for FY 2026"`) and **`[9] tcs-ar-26-p36-c0`** (`"...Total 110 39,7 99. 0..."`) contain `"110"`.
+- **`q14` (`"By what percentage did TCS's profit attributable to shareholders, excluding exceptional items, grow in fiscal 2026?"`)**:
+  - Primary top 3 are all on Page 24: `[1] tcs-ar-26-p24-c5`, `[2] tcs-ar-26-p24-c3`, `[3] tcs-ar-26-p24-c1` (with `p24-c2` already at `[4]` and `tcs-ar-26-p36-c2` at `[5]`).
+  - Appended 2 neighbours (`[7] tcs-ar-26-p24-c4` and `[8] tcs-ar-26-p24-c0`), neither of which contains `"8.8"` or `"profit attributable to shareholders"`. Because `tcs-ar-26-p36-c2` is at primary rank `#5` (outside top $N = 3$), its neighbour `tcs-ar-26-p36-c1` is not added.
+
+### 4. Step 3: Evaluation Results (`exp5e-neighbors-retrieval` & `exp5e-neighbors-full`)
+- **`exp5e-neighbors-retrieval` (`20261012T095907Z_exp5e-neighbors-retrieval`)** & **`exp5e-neighbors-full` (`20261012T100349Z_exp5e-neighbors-full`)**:
+  - **Primary Retrieval (`25` answerable)**: Identical to `exp5d-glyph-full` (`page_hit@1/3/6 = 0.4800 / 0.8000 / 0.8400`, `MRR = 0.6413`, `text_hit_all@6 = 0.8800`, `distinct_pages@6 = 4.88`).
+  - **Context Retrieval**: `text_hit_any@context` and `text_hit_all@context` improved to **`0.9200` (`23/25`, `+0.0800` vs. `baseline-v3`, `+0.0400` vs. `exp5d-glyph-full`)**, with `mean_context_chunks = 9.41`.
+  - **Answer Outcomes (`29` questions)**: **`20 CORRECT` (`+1` vs. `baseline-v3` and `exp5d-glyph-full`), `2 WRONG` (`-1` vs. `exp5d-glyph-full`), `3 FALSE_REFUSAL`, `4 CORRECT_REFUSAL`, `0 ANSWERED_ANYWAY`**. **`q03` flipped from `WRONG` to `CORRECT`** (citing neighbour chunks `[8] tcs-ar-26-p24-c4` and `[9] tcs-ar-26-p36-c0` plus primary chunk `[3] tcs-ar-26-p36-c1`), with **zero regressions** on any previously `CORRECT` question.
+  - **Faithfulness & Cost**: `faithfulness_rate = 1.0000` (`21/21`, `+0.0455` vs. `exp5d-glyph-full`), `citation_precision = 1.0000` (`38/38`), `avg_input_tokens = 2840.1` (up from `2063.0`), `avg_cost_per_query_usd = $0.000951` (`+$0.000260` vs. `baseline-v3`, `+$0.000250` vs. `exp5d-glyph-full`).
+
+### 5. Step 4: `'deŵo' -> 'Temo'` Bug Verification & Fix on Page 22 (`glyph_repair.py`)
+- Verified in `tcs-ar-26-p22-c3` that `'deŵo'` was repaired to `'Temo'` because `'ŵ'` (`U+0175` $\to$ `'m'`) triggered Rule 1b(i), `'demo'` had count `0` on the 326 clean TCS pages (`cf_is_clean_word = False`), and word-initial `'d' -> 'T'` fired unconditionally when `not cf_is_clean_word`.
+- Tightened Rule 1b(i) in `src/annual_report_rag/ingestion/glyph_repair.py` so word-initial `'d' -> 'T'` requires `not cf_is_clean_word and (t_is_clean_word or next_is_upper)`. Verified on Page 22 and across all 30 degraded TCS pages that `'deŵo'` now repairs to `'demo'`, while `'dotaů' -> 'Total'` (`clean_lower['total'] = 453`) and `'d\x12^' -> 'TC^'` (`next_is_upper = True`) remain intact. No re-index was run in Phase 5e (Page 22 is an awards page not referenced by any golden question; a re-index is required if the stored `tcs-ar-26-p22-c3` text in `chroma_db/` is to be updated).
+
