@@ -455,7 +455,7 @@
     ],
     "must_not_contain": [],
     "notes": "",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -482,7 +482,7 @@
     ],
     "must_not_contain": [],
     "notes": "",
-    "human_verified": false,
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
