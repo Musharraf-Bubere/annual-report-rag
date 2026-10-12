@@ -84,7 +84,15 @@ class RetrievalConfig:
     query_prefix: str | None = None
     max_chunks_per_page: int | None = None
     neighbor_window: int = 0
+    neighbor_top_n: int = 3
     max_context_chunks: int | None = None
+
+
+@dataclass(frozen=True)
+class PromptConfig:
+    """Holds prompt construction feature switches."""
+
+    rules_v2: bool = False
 
 
 @dataclass(frozen=True)
@@ -144,6 +152,7 @@ class Settings:
     retrieval: RetrievalConfig
     storage: StorageConfig
     quality: QualityConfig = QualityConfig()
+    prompt: PromptConfig = PromptConfig()
     api: ApiConfig = ApiConfig()
     sources: dict[str, SourceMetadata] = field(default_factory=dict)
     evaluation: EvaluationConfig = EvaluationConfig()
@@ -229,6 +238,8 @@ def parse_retrieval_config(data: dict[str, Any]) -> RetrievalConfig:
     )
     raw_neighbor_window = data.get("neighbor_window", 0)
     neighbor_window = int(raw_neighbor_window) if raw_neighbor_window is not None else 0
+    raw_neighbor_top_n = data.get("neighbor_top_n", 3)
+    neighbor_top_n = int(raw_neighbor_top_n) if raw_neighbor_top_n is not None else 3
     raw_max_ctx = data.get("max_context_chunks")
     max_context_chunks = int(raw_max_ctx) if raw_max_ctx is not None else None
     return RetrievalConfig(
@@ -238,8 +249,16 @@ def parse_retrieval_config(data: dict[str, Any]) -> RetrievalConfig:
         query_prefix=query_prefix,
         max_chunks_per_page=max_chunks_per_page,
         neighbor_window=neighbor_window,
+        neighbor_top_n=neighbor_top_n,
         max_context_chunks=max_context_chunks,
     )
+
+
+def parse_prompt_config(data: dict[str, Any]) -> PromptConfig:
+    """Parses prompt configuration switches into a typed PromptConfig instance."""
+    if not isinstance(data, dict):
+        return PromptConfig()
+    return PromptConfig(rules_v2=bool(data.get("rules_v2", False)))
 
 
 def parse_api_config(data: dict[str, Any]) -> ApiConfig:
@@ -351,6 +370,7 @@ def load_settings(
         retrieval=parse_retrieval_config(data.get("retrieval", {})),
         storage=parse_storage_config(data.get("storage", {})),
         quality=parse_quality_config(data.get("quality", {})),
+        prompt=parse_prompt_config(data.get("prompt", {})),
         api=parse_api_config(data.get("api", {})),
         sources=parse_sources_config(data.get("sources", {})),
         evaluation=parse_evaluation_config(data.get("evaluation", {})),

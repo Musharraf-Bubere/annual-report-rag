@@ -299,3 +299,50 @@ In Phase 5e (no re-index), we added `retrieval.neighbor_window` (default `0`) an
 2. **Why `q14` Remains `WRONG` in Phase 5e**:
    - On `q14`, the top $N = 3$ primary hits are all on Page 24 (`[1] tcs-ar-26-p24-c5`, `[2] tcs-ar-26-p24-c3`, `[3] tcs-ar-26-p24-c1`), while `tcs-ar-26-p36-c2` (`"...₹52,820 crore, registering a growth of 8.8%..."`) sits at primary rank `#5`. Because neighbour expansion only expands the top $N = 3$ primary hits, `tcs-ar-26-p36-c1` (which holds the consolidated subject `"The profit for the year attributable to shareholders (excluding exceptional items)"` for `p36-c2`'s opening overlap) is not added to the context unless Page 24 crowding is also capped (`max_chunks_per_page=2`) or $N$ is increased.
 
+---
+
+## 11. Phase 5f: Step 0 Rescores, Neighbour Top-$N$ (`exp5f-n6`), and General Prompt Rules (`exp5f-prompt`) Measured with 3 Repeats
+
+### A. Step 0: Offline Rescores Against Committed `golden_questions.json` (`q05`: `"19.8|19.78"`)
+
+| Run Label | Rescored File | `CORRECT` (Before $\to$ After) | `WRONG` (Before $\to$ After) | `FALSE_REFUSAL` | `CORRECT_REFUSAL` | Question Outcome Changed |
+| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
+| **`baseline-v3`** | `20261012T125413Z_baseline-v3` | `19` $\to$ **`19`** | `1` $\to$ `1` | `5` | `4` | None (`q05` was `FALSE_REFUSAL`) |
+| **`exp5d-glyph-full`** | `20261012T125416Z_exp5d-glyph-full` | `19` $\to$ **`20`** | `3` $\to$ `2` | `3` | `4` | `q05`: `WRONG -> CORRECT` |
+| **`exp5e-neighbors-full`** | `20261012T125420Z_exp5e-neighbors-full` | `20` $\to$ **`21`** | `2` $\to$ `1` | `3` | `4` | `q05`: `WRONG -> CORRECT` |
+
+### B. Step A & Step B: Aggregate 3-Repeat Comparison (`exp5e-r3` vs. `exp5f-n6` vs. `exp5f-prompt`)
+
+| Metric | `exp5e-r3` (`N=3, rules_v2=false`) | `exp5f-n6` (`N=6, rules_v2=false`) | `exp5f-prompt` (`N=6, rules_v2=true`) | Delta (`prompt - exp5e-r3`) |
+| :--- | :---: | :---: | :---: | :---: |
+| `page_hit@1` / `@3` / `@6` | `0.4800` / `0.8000` / `0.8400` | `0.4800` / `0.8000` / `0.8400` | `0.4800` / `0.8000` / `0.8400` | `0.0000` |
+| `MRR` | `0.6413` | `0.6413` | `0.6413` | `0.0000` |
+| `text_hit_all@6` | `0.8800` | `0.8800` | `0.8800` | `0.0000` |
+| `text_hit_any@context` / `all@context` | `0.9200` / `0.9200` | `0.9200` / `0.9200` | `0.9200` / `0.9200` | `0.0000` |
+| `mean_context_chunks` | `9.41` | `10.00` | `10.00` | `+0.59` |
+| `CORRECT` (repeat 0) | `21` | `21` | **`23`** | **`+2`** |
+| `WRONG` (repeat 0) | `1` | `1` | **`0`** | **`-1`** |
+| `FALSE_REFUSAL` (repeat 0) | `3` | `3` | **`2`** | **`-1`** |
+| `CORRECT_REFUSAL` (repeat 0) | `4` | `4` | `4` | `0` |
+| `ANSWERED_ANYWAY` | `0` | `0` | `0` | `0` |
+| `accuracy` (3-repeat mean, min–max) | `0.8621` (`0.8621–0.8621`) | `0.8736` (`0.8621–0.8966`) | **`0.9310` (`0.9310–0.9310`)** | **`+0.0689`** |
+| `answerable_accuracy` (3-repeat mean) | `0.8400` (`0.8400–0.8400`) | `0.8533` (`0.8400–0.8800`) | **`0.9200` (`0.9200–0.9200`)** | **`+0.0800`** |
+| `flip_rate` (3 repeats) | **`0.0000`** (`[]`) | `0.0345` (`['q14']`) | **`0.0000`** (`[]`) | `0.0000` |
+| `grounded_rate` (answerable) | `0.8400` | `0.8800` | `0.8800` | `+0.0400` |
+| `questions_with_unsupported_numbers` | `1` (`['q05']`) | `1` (`['q05']`) | **`0` (`[]`)** | **`-1`** |
+| `faithfulness_rate` | `1.0000` (`21/21`) | `1.0000` (`22/22`) | `0.9545` (`21/22`) | `-0.0455` (`q30`) |
+| `citation_precision` | `1.0000` (`38/38`) | `1.0000` (`39/39`) | **`1.0000` (`40/40`)** | `0.0000` |
+| `avg_input_tokens` | `2840.1` | `3018.7` | `3093.7` | `+253.6` |
+| `avg_cost_per_query_usd` | `$0.000945` | `$0.000999` | `$0.001014` | `+$0.000069` |
+
+### C. Step C: Per-Question Changes (`exp5f-prompt` vs. `exp5e-r3`), Repeat Stability, and Noise Analysis
+1. **Every Question Whose Outcome Changed Between `exp5e-r3` and `exp5f-prompt`**:
+   - **`q14` [IMPROVED, STABLE `3/3` REPEATS]**: `WRONG, WRONG, WRONG` (`exp5e-r3`) $\to$ `WRONG, WRONG, CORRECT` (`exp5f-n6`) $\to$ **`CORRECT, CORRECT, CORRECT`** (`exp5f-prompt`). Expanding `neighbor_top_n=6` added `[9] tcs-ar-26-p36-c1` (the consolidated `8.8%` sentence), and Rule 9 (Basis: default to consolidated unless `"standalone"` is asked) made the model select `8.8% [5][9]` on all 3 repeats instead of standalone `9.0% [5]`.
+   - **`q22` [IMPROVED, STABLE `3/3` REPEATS]**: `FALSE_REFUSAL, FALSE_REFUSAL, FALSE_REFUSAL` (`exp5e-r3` & `exp5f-n6`) $\to$ **`CORRECT, CORRECT, CORRECT`** (`exp5f-prompt`). Rule 8 (Accounting synonyms: `"operating income" = "operating profit" = "EBIT"`) enabled the generator to answer with `"operating profit (operating income) of ₹66,838 crore [5]"` from `tcs-ar-26-p24-c2` across all 3 repeats.
+   - **`q30` [IMPROVED, STABLE `3/3` REPEATS]**: `FALSE_REFUSAL, FALSE_REFUSAL, FALSE_REFUSAL` (`exp5e-r3` & `exp5f-n6`) $\to$ **`CORRECT, CORRECT, CORRECT`** (`exp5f-prompt`). Answered `"₹145.99 [6]"` from `tcs-ar-26-p24-c3` across all 3 repeats.
+   - **`q05` [REGRESSED, STABLE `3/3` REPEATS]**: `CORRECT, CORRECT, CORRECT` (`exp5e-r3` & `exp5f-n6`) $\to$ **`FALSE_REFUSAL, FALSE_REFUSAL, FALSE_REFUSAL`** (`exp5f-prompt`). Because the headline `"Net Margin of 19.8%"` chunk (`p8-c7` / `p58-c1`) is still not in the retrieved context (`page_hit@6 = False`, `text_hit_all@context = False`), under `rules_v2=true` the generator adhered strictly to Rule 3 (*"Do not calculate unless the user asks"*) rather than computing `52,820 / 2,67,021 = 19.78%`, eliminating the `unsupported_numbers = ['19.78']` flag.
+2. **Noise Assessment on a 29-Question Set**:
+   - The `exp5f-n6` vs. `exp5e-r3` difference (`+0.33` questions / `+1.15%` mean accuracy from `q14` flipping on `1/3` repeats) is **within the single-question generation noise** of a 29-question set.
+   - In `exp5f-prompt` vs. `exp5e-r3`, all 4 per-question shifts are **100% repeat-stable (`3/3` vs `0/3`, `flip_rate = 0.0000`)** and causally explained by the new rules (`q14`, `q22`, `q30` vs `q05`). However, in terms of dataset sampling granularity on $n = 29$ (`1` question $= 3.45\%$ accuracy, binomial SE $\approx 4.7\%–6.4\%$ or `~1.4–1.9` questions), a net `+2` question gain (`21 -> 23 CORRECT`, `+6.90%` overall / `+8.00%` answerable) is `~1.1–1.5` standard errors of the 29-question sample proportion, so while the per-question rule fixes are deterministic across repeats, the aggregate percentage delta is at the margin of 29-question sample noise.
+
+

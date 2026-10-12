@@ -91,10 +91,21 @@ def parse_args() -> argparse.Namespace:
         help="Override retrieval.neighbor_window for this evaluation run.",
     )
     parser.add_argument(
+        "--neighbor-top-n",
+        type=int,
+        default=None,
+        help="Override retrieval.neighbor_top_n for this evaluation run.",
+    )
+    parser.add_argument(
         "--max-context-chunks",
         type=int,
         default=None,
         help="Override retrieval.max_context_chunks for this evaluation run.",
+    )
+    parser.add_argument(
+        "--rules-v2",
+        action="store_true",
+        help="Enable prompt.rules_v2 for this evaluation run.",
     )
     return parser.parse_args()
 
@@ -104,13 +115,22 @@ def run_cli(args: argparse.Namespace) -> int:
     from dataclasses import replace
 
     settings = load_settings()
-    if args.neighbor_window is not None or args.max_context_chunks is not None:
+    if (
+        args.neighbor_window is not None
+        or args.neighbor_top_n is not None
+        or args.max_context_chunks is not None
+    ):
         new_ret = replace(
             settings.retrieval,
             neighbor_window=(
                 args.neighbor_window
                 if args.neighbor_window is not None
                 else settings.retrieval.neighbor_window
+            ),
+            neighbor_top_n=(
+                args.neighbor_top_n
+                if args.neighbor_top_n is not None
+                else settings.retrieval.neighbor_top_n
             ),
             max_context_chunks=(
                 args.max_context_chunks
@@ -119,6 +139,11 @@ def run_cli(args: argparse.Namespace) -> int:
             ),
         )
         settings = replace(settings, retrieval=new_ret)
+    if args.rules_v2:
+        settings = replace(
+            settings,
+            prompt=replace(settings.prompt, rules_v2=True),
+        )
     golden = load_golden_set(settings.evaluation.golden_set_path)
 
     store = ChromaStore(
@@ -171,7 +196,7 @@ def run_cli(args: argparse.Namespace) -> int:
         return 0
 
     if args.rescore:
-        target_label = args.label if args.label != "eval" else "baseline-v2"
+        target_label = args.label if args.label != "eval" else args.rescore
         output = rescore_run(
             golden=golden,
             settings=settings,

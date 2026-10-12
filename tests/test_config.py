@@ -48,6 +48,10 @@ def test_load_default_settings() -> None:
     assert settings.retrieval.max_question_chars == 1000
     assert settings.retrieval.query_prefix is None
     assert settings.retrieval.max_chunks_per_page is None
+    assert settings.retrieval.neighbor_window == 0
+    assert settings.retrieval.neighbor_top_n == 3
+    assert settings.retrieval.max_context_chunks is None
+    assert settings.prompt.rules_v2 is False
     assert settings.api.cors_origins == ("http://localhost:8501",)
     assert "tcs-ar-26" in settings.sources
     assert settings.sources["tcs-ar-26"].display_name == "TCS Integrated Annual Report 2025-26"
@@ -101,6 +105,11 @@ ingestion:
   min_page_chars: 10
 retrieval:
   top_k: 3
+  neighbor_window: 1
+  neighbor_top_n: 6
+  max_context_chunks: 10
+prompt:
+  rules_v2: true
 storage:
   vector_store_path: "temp_db"
   collection_name: "temp_collection"
@@ -132,6 +141,10 @@ quality:
 
     assert settings.ingestion.chunk_size == 500
     assert settings.ingestion.min_page_chars == 10
+    assert settings.retrieval.neighbor_window == 1
+    assert settings.retrieval.neighbor_top_n == 6
+    assert settings.retrieval.max_context_chunks == 10
+    assert settings.prompt.rules_v2 is True
     assert settings.storage.collection_name == "temp_collection"
     assert settings.quality.single_letter_ratio_threshold == 0.20
     assert settings.quality.odd_char_ratio_threshold == 0.08

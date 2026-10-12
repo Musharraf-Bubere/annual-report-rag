@@ -42,7 +42,7 @@ from annual_report_rag.generation.answerer import (
     answer_question,
 )
 from annual_report_rag.generation.checks import find_unsupported_numbers
-from annual_report_rag.generation.prompts import SYSTEM_PROMPT
+from annual_report_rag.generation.prompts import get_system_prompt
 from annual_report_rag.providers.base import (
     DailyQuotaExceeded,
     EmbeddingProvider,
@@ -82,8 +82,13 @@ def compute_settings_hash(settings: Settings) -> str:
             ret_dict.pop("max_chunks_per_page", None)
         if not ret_dict.get("neighbor_window"):
             ret_dict.pop("neighbor_window", None)
+        if ret_dict.get("neighbor_top_n", 3) == 3:
+            ret_dict.pop("neighbor_top_n", None)
         if ret_dict.get("max_context_chunks") is None:
             ret_dict.pop("max_context_chunks", None)
+    prompt_dict = raw.get("prompt")
+    if isinstance(prompt_dict, dict) and not prompt_dict.get("rules_v2"):
+        raw.pop("prompt", None)
     serialized = json.dumps(raw, sort_keys=True)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
@@ -771,7 +776,8 @@ def run_eval(
     results_dir.mkdir(parents=True, exist_ok=True)
 
     settings_hash = compute_settings_hash(settings)
-    prompt_hash = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+    active_prompt = get_system_prompt(settings)
+    prompt_hash = hashlib.sha256(active_prompt.encode("utf-8")).hexdigest()
     store_fp = active_store.fingerprint()
 
     all_records: list[QuestionOutcomeRecord] = []

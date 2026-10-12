@@ -413,4 +413,22 @@ def test_retriever_neighbor_expansion_and_citations(tmp_path: Path) -> None:
     assert citations[1].chunk_id == "tcs-ar-26-p24-c2"
     assert citations[1].neighbor_of == "tcs-ar-26-p24-c1"
 
+    # 5. neighbor_top_n=2 expands only top 2 primary hits (p24-c0 and p24-c1), skipping 3rd hit p24-c4's neighbour p24-c3
+    topn2_settings = replace(
+        base_settings,
+        retrieval=replace(
+            base_settings.retrieval,
+            neighbor_window=1,
+            neighbor_top_n=2,
+            max_context_chunks=10,
+        ),
+    )
+    res_topn2 = retrieve(q_text, embedder, store, topn2_settings)
+    assert [c.chunk_id for c in res_topn2] == [
+        "tcs-ar-26-p24-c0",
+        "tcs-ar-26-p24-c1",
+        "tcs-ar-26-p24-c4",
+        "tcs-ar-26-p24-c2",
+    ]
+
 

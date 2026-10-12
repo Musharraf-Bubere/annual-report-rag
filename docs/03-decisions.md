@@ -616,4 +616,20 @@ This document captures key design decisions, their rationale, alternatives consi
 * **Choice:** In `repair_degraded_token` (`ingestion/glyph_repair.py`), require that word-initial `'d' -> 'T'` in Rule 1b(i) only fires when `not cf_is_clean_word and (t_is_clean_word or next_is_upper)`—i.e., either the `'T'`-repaired word (`"T" + cf_stripped[1:]`) itself exists in the clean-page vocabulary (`count >= 5`, which preserves `'dotaů' -> 'Total'` on Page 170 where `'Total'` has clean count `453`), or the next character is uppercase (preserving `'d\x12^' -> 'TC^'` on Pages 20, 24, 170).
 * **Reason:** Prevents turning rare lowercase words starting with `'d'` (such as `'deŵo' -> 'demo'`) into nonsense `'T...'` words when `'T...'` is not in the clean vocabulary, while preserving 100% of valid `'d' -> 'T'` repairs across all 30 degraded TCS pages.
 
+---
+
+### Decision 50: Expanding All `top_k` Primary Hits (`retrieval.neighbor_top_n: 6`) and General Accounting/Basis Prompt Rules (`prompt.rules_v2`)
+
+* **Context:**
+  1. In Phase 5e (`neighbor_top_n=3`), `q14` (*"By what percentage did TCS's profit attributable to shareholders, excluding exceptional items, grow in fiscal 2026?"*) still failed (`WRONG`) because its top 3 primary hits were all on Page 24, while `tcs-ar-26-p36-c2` sat at primary rank `#5`. As a result, `tcs-ar-26-p36-c1` (which holds the consolidated subject sentence for `p36-c2`'s `"8.8%"`) was never appended as a neighbour.
+  2. Even when `tcs-ar-26-p36-c1` is added to the context (`neighbor_top_n=6`), `p36-c1` states the **consolidated** growth (`8.8%`) while `p36-c2` states the **standalone** growth (`9.0%`). Without an explicit basis rule, the generator picked `9.0%` on 2 of 3 repeats (`exp5f-n6`). Similarly, on `q22` (*"What was TCS's operating income in fiscal 2026?"*), `tcs-ar-26-p24-c2` reports `"operating profit"` (`₹66,838 crore`), causing a strict refusal unless standard accounting synonyms are permitted.
+* **Choice:**
+  1. Add `retrieval.neighbor_top_n: int = 3` (default `3` so Phase 5e reproduces bit-for-bit). Setting `neighbor_top_n=6` with `max_context_chunks=10` expands primary ranks `1..6` up to the 10-chunk cap, bringing `tcs-ar-26-p36-c1` into `q14`'s context at `[9]`.
+  2. Add `prompt.rules_v2: bool = False` (default `false` so all prior runs reproduce) which appends two general rules to `SYSTEM_PROMPT` (`SYSTEM_PROMPT_V2` in `generation/prompts.py`):
+     - **Rule 8 (Accounting synonyms)**: *"treat 'operating income' = 'operating profit' = 'EBIT', and similar standard equivalents, as the same measure; state the term the report uses."*
+     - **Rule 9 (Basis)**: *"unless the question says 'standalone', answer with the consolidated figure and name the basis; if both bases are in the context, never mix them in one answer."*
+* **Reason:** Evaluated across 3 repeats (`--repeats 3 --judge`), `exp5f-prompt` (`neighbor_window=1, neighbor_top_n=6, max_context_chunks=10, rules_v2=true`) achieves **`23 CORRECT`, `0 WRONG`, `2 FALSE_REFUSAL`, `4 CORRECT_REFUSAL` (`93.10%` accuracy, `flip_rate = 0.0000`)**, deterministically resolving `q14`, `q22`, and `q30` across `3/3` repeats (`+2` net `CORRECT` vs. `exp5e-r3`'s `21 CORRECT`).
+* **Trade-off:** Adding Rules 8 and 9 makes the model follow Rule 3 (*"Do not calculate unless the user asks"*) more strictly on `q05` (where the headline `19.8%` chunk on `p8`/`p58` is still not retrieved), shifting `q05` from an unrequested arithmetic division (`52,820 / 2,67,021 = 19.78%`, `CORRECT` after the `19.8|19.78` golden update, `unsupported_numbers=['19.78']`) to a conservative `FALSE_REFUSAL` (`3/3` repeats, reducing `questions_with_unsupported_numbers` from `1` to `0`).
+
+
 

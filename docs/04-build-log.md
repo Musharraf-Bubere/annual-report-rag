@@ -725,3 +725,35 @@ Applied the conflict-free glyph repair and clean-page vocabulary safety rules to
 - Verified in `tcs-ar-26-p22-c3` that `'deŵo'` was repaired to `'Temo'` because `'ŵ'` (`U+0175` $\to$ `'m'`) triggered Rule 1b(i), `'demo'` had count `0` on the 326 clean TCS pages (`cf_is_clean_word = False`), and word-initial `'d' -> 'T'` fired unconditionally when `not cf_is_clean_word`.
 - Tightened Rule 1b(i) in `src/annual_report_rag/ingestion/glyph_repair.py` so word-initial `'d' -> 'T'` requires `not cf_is_clean_word and (t_is_clean_word or next_is_upper)`. Verified on Page 22 and across all 30 degraded TCS pages that `'deŵo'` now repairs to `'demo'`, while `'dotaů' -> 'Total'` (`clean_lower['total'] = 453`) and `'d\x12^' -> 'TC^'` (`next_is_upper = True`) remain intact. No re-index was run in Phase 5e (Page 22 is an awards page not referenced by any golden question; a re-index is required if the stored `tcs-ar-26-p22-c3` text in `chroma_db/` is to be updated).
 
+---
+
+## Phase 5f — Neighbour Top-$N$ Experiment (`neighbor_top_n=6`) & General Accounting/Basis Prompt Rules (`prompt.rules_v2`) Measured with 3 Repeats
+
+### 1. Step 0: Offline Rescore of `baseline-v3`, `exp5d-glyph-full`, and `exp5e-neighbors-full` Against Updated `golden_questions.json` (`q05`: `"19.8|19.78"`)
+- Ran `scripts/run_eval.py --rescore` on `baseline-v3` (`20261012T125413Z_baseline-v3`), `exp5d-glyph-full` (`20261012T125416Z_exp5d-glyph-full`), and `exp5e-neighbors-full` (`20261012T125420Z_exp5e-neighbors-full`):
+  - **`baseline-v3`**: `19 -> 19 CORRECT`, `1 WRONG`, `5 FALSE_REFUSAL`, `4 CORRECT_REFUSAL` (`q05` was `FALSE_REFUSAL` in `baseline-v3`).
+  - **`exp5d-glyph-full`**: `19 -> 20 CORRECT`, `3 -> 2 WRONG`, `3 FALSE_REFUSAL`, `4 CORRECT_REFUSAL` (`q05` moved from `WRONG` to `CORRECT`).
+  - **`exp5e-neighbors-full`**: `20 -> 21 CORRECT`, `2 -> 1 WRONG`, `3 FALSE_REFUSAL`, `4 CORRECT_REFUSAL` (`q05` moved from `WRONG` to `CORRECT`, alongside `q03` `CORRECT`).
+
+### 2. Step A: `retrieval.neighbor_top_n` Experiment (`exp5e-r3` [`N=3`] vs. `exp5f-n6` [`N=6`], `--repeats 3 --judge`)
+- Added `retrieval.neighbor_top_n: int = 3` (default `3`) to `config/settings.yaml`, `RetrievalConfig`, `retriever.py`, and `--neighbor-top-n` in `scripts/run_eval.py`.
+- **`q14` Neighbour Check (`neighbor_window=1, neighbor_top_n=6, max_context_chunks=10`)**:
+  - Expanding all 6 primary hits appends 4 neighbours (`[7] tcs-ar-26-p24-c4`, `[8] tcs-ar-26-p24-c0`, **`[9] tcs-ar-26-p36-c1`**, `[10] tcs-ar-26-p36-c3`). **`tcs-ar-26-p36-c1` IS included at `[9]`** (`neighbor_of=tcs-ar-26-p36-c2`) and contains the full consolidated sentence (`"...The profit for the year attributable to shareholders (excluding exceptional items) for FY 2026 was ₹52,820 crore, registering a growth of 8.8%..."`).
+- **3-Repeat Evaluation (`exp5e-r3` vs. `exp5f-n6`)**:
+  - `exp5e-r3` (`20261012T131907Z_exp5e-r3`): `21 CORRECT`, `1 WRONG` (`q14`), `3 FALSE_REFUSAL` (`q22, q26, q30`), `4 CORRECT_REFUSAL`, `flip_rate = 0.0000`, `accuracy = 0.8621 (0.8621–0.8621)`, `mean_context_chunks = 9.41`, `avg_input_tokens = 2840.1`, `avg_cost_per_query_usd = $0.000945`.
+  - `exp5f-n6` (`20261012T132605Z_exp5f-n6`): `21 CORRECT` (repeat 0), `1 WRONG`, `3 FALSE_REFUSAL`, `4 CORRECT_REFUSAL`, `flip_rate = 0.0345` (`flipped_question_ids = ['q14']`, where `q14` scored `[WRONG, WRONG, CORRECT]` across the 3 repeats because both `[9] p36-c1` consolidated `8.8%` and `[5] p36-c2` standalone `9.0%` were in context), `accuracy = 0.8736 (0.8621–0.8966)`, `mean_context_chunks = 10.00`, `avg_input_tokens = 3018.7`, `avg_cost_per_query_usd = $0.000999`.
+
+### 3. Step B & Step C: `prompt.rules_v2` Experiment (`exp5f-prompt`, `neighbor_top_n=6, rules_v2=true, --repeats 3 --judge`)
+- Added `prompt.rules_v2: bool = False` (default `false`) to `config/settings.yaml`, `PromptConfig`, `generation/prompts.py` (`SYSTEM_PROMPT_V2`), and `--rules-v2` in `scripts/run_eval.py`, appending two general rules:
+  - Rule 8 (Accounting synonyms): `treat "operating income" = "operating profit" = "EBIT", and similar standard equivalents, as the same measure; state the term the report uses.`
+  - Rule 9 (Basis): `unless the question says "standalone", answer with the consolidated figure and name the basis; if both bases are in the context, never mix them in one answer.`
+- **`exp5f-prompt` (`20261012T134500Z_exp5f-prompt`, `--repeats 3 --judge`)**:
+  - **Outcomes**: **`23 CORRECT` (`+2` vs. `exp5e-r3`), `0 WRONG` (`-1`), `2 FALSE_REFUSAL` (`-1`, only `q05` and `q26`), `4 CORRECT_REFUSAL`, `0 ANSWERED_ANYWAY`**.
+  - **Stability**: **`flip_rate = 0.0000`** (`0` flipped questions across 3 repeats; `accuracy = 0.9310 (0.9310–0.9310)`, `answerable_accuracy = 0.9200 (0.9200–0.9200)`).
+  - **Per-Question Changes vs. `exp5e-r3` (all `3/3` repeat-stable)**:
+    - **`q14` [IMPROVED, `3/3` repeats]**: `[WRONG, WRONG, WRONG]` $\to$ `[CORRECT, CORRECT, CORRECT]` (`8.8%` consolidated cited from `[5][9]`).
+    - **`q22` [IMPROVED, `3/3` repeats]**: `[FALSE_REFUSAL, FALSE_REFUSAL, FALSE_REFUSAL]` $\to$ `[CORRECT, CORRECT, CORRECT]` (`₹66,838 crore` operating profit/income cited from `[5]`).
+    - **`q30` [IMPROVED, `3/3` repeats]**: `[FALSE_REFUSAL, FALSE_REFUSAL, FALSE_REFUSAL]` $\to$ `[CORRECT, CORRECT, CORRECT]` (`₹145.99` EPS cited from `[6]`).
+    - **`q05` [REGRESSED, `3/3` repeats]**: `[CORRECT, CORRECT, CORRECT]` $\to$ `[FALSE_REFUSAL, FALSE_REFUSAL, FALSE_REFUSAL]` (model followed Rule 3's no-unrequested-calculation constraint rather than dividing `52,820 / 2,67,021`, reducing `questions_with_unsupported_numbers` from `1` to `0`).
+
+

@@ -31,8 +31,13 @@ retrieval:
   max_question_chars: 1000      # Maximum allowed question length in characters after whitespace stripping
   query_prefix: null            # Optional instruction prefix prepended to queries before embedding (null = off)
   max_chunks_per_page: null     # Optional per-(source, page) chunk cap fetching 4x top_k candidates (null = off)
-  neighbor_window: 0            # Same-page neighbour window (c-w..c+w) for top-3 primary hits (0 = off)
+  neighbor_window: 0            # Same-page neighbour window (c-w..c+w) for top-N primary hits (0 = off)
+  neighbor_top_n: 3             # Number of top primary hits to expand with same-page neighbours (default 3)
   max_context_chunks: null      # Optional cap on total context chunks after neighbour expansion (null = off)
+
+# Prompt rules settings
+prompt:
+  rules_v2: false               # Enable Phase 5f accounting-synonym and consolidated/standalone basis rules (default false)
 
 # FastAPI server settings
 api:

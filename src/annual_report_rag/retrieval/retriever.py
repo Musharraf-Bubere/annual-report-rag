@@ -214,4 +214,5 @@ def retrieve(
         store=store,
         neighbor_window=settings.retrieval.neighbor_window,
         max_context_chunks=settings.retrieval.max_context_chunks,
+        top_n=settings.retrieval.neighbor_top_n,
     )
