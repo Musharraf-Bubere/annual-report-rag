@@ -190,7 +190,7 @@ def test_page_below_threshold_stays_clean() -> None:
 
 def test_page_above_threshold_drops_corrupted_and_retains_allowlisted() -> None:
     """Verifies that a page above threshold repairs mapped tokens, drops unmapped corrupted tokens, and retains allowlisted names."""
-    corrupted_part = "ĐonƐolŝdated ƌevenue oĨ 26ϳ,021 ĐƌŽƌe " * 4
+    corrupted_part = "ĐonƐolŝdated ƌevenue oĨ 26ϳ,021 ĐƌŽƌe h^Ψ " * 4
     text = f"Mondelēz announced that {corrupted_part}"
     cleaned, quality, record = assess_and_filter_page(
         source="tcs-ar-26",
@@ -204,5 +204,5 @@ def test_page_above_threshold_drops_corrupted_and_retains_allowlisted() -> None:
     assert record is not None
     assert record["dropped_tokens"] == 4
     assert "Mondelēz" in cleaned
-    assert "consolidated revenue of 267,021" in cleaned
-    assert "ĐƌŽƌe" not in cleaned
+    assert "consolidated revenue of 267,021 crore" in cleaned
+    assert "h^Ψ" not in cleaned

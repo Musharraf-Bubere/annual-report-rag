@@ -82,8 +82,8 @@ def test_mondelez_survives_untouched_by_repair_and_filter() -> None:
 
 
 def test_mapped_letter_token_repaired_and_unmapped_dropped() -> None:
-    """Verifies that mapped tokens ('ĐonƐolŝdated') are repaired while unmapped ('ĐƌŽƌe') are dropped."""
-    text = "Company reported ĐonƐolŝdated revenue of 500 ĐƌŽƌe."
+    """Verifies that mapped tokens ('ĐonƐolŝdated', 'ĐƌŽƌe') are repaired while unmapped ('h^Ψ') are dropped."""
+    text = "Company reported ĐonƐolŝdated revenue of h^Ψ 500 ĐƌŽƌe."
     filtered, quality, record = assess_and_filter_page(
         source="tcs-ar-26",
         page_num=8,
@@ -93,7 +93,8 @@ def test_mapped_letter_token_repaired_and_unmapped_dropped() -> None:
     )
     assert quality == "degraded"
     assert "consolidated" in filtered
-    assert "ĐƌŽƌe" not in filtered
+    assert "crore." in filtered
+    assert "h^Ψ" not in filtered
     assert record is not None
     assert record["dropped_tokens"] == 1
 
@@ -121,13 +122,14 @@ def test_text_quality_state_labels() -> None:
     assert rec_rep["dropped_tokens"] == 0
 
     # 3. Degraded page: corrupted letters repaired and unmapped dropped
-    degraded_input = "Fiscal year ϮϬϮϲ ĐonƐolŝdated balance in ĐƌŽƌe."
+    degraded_input = "Fiscal year ϮϬϮϲ ĐonƐolŝdated balance in h^Ψ ĐƌŽƌe."
     out_deg, q_deg, rec_deg = assess_and_filter_page(
         source="tcs", page_num=3, cleaned=degraded_input, raw=degraded_input
     )
     assert q_deg == "degraded"
     assert "consolidated" in out_deg
-    assert "ĐƌŽƌe" not in out_deg
+    assert "crore." in out_deg
+    assert "h^Ψ" not in out_deg
     assert "2026" in out_deg
     assert rec_deg is not None
     assert rec_deg["dropped_tokens"] == 1
@@ -190,6 +192,38 @@ def test_phase5c_golden_repairs_and_idempotency() -> None:
     )
     assert "Net M argin" in repaired_no_join
     assert joins_off == 0
+
+
+def test_phase5d_extended_glyph_mappings_and_leading_e() -> None:
+    """Phase 5d Step 3: Golden unit tests for 'ĂƌŶŝŶŐƐ' -> 'earnings', 7 extended glyphs, U+0DAE space, and U+001C 'E'."""
+    from annual_report_rag.ingestion.loader import clean_text
+
+    # 1. Golden unit test: 'ĂƌŶŝŶŐƐ' -> 'earnings'
+    rep_earnings, cnt_e, _ = repair_degraded_page_text("ĂƌŶŝŶŐƐ")
+    assert rep_earnings == "earnings"
+    assert cnt_e > 0
+
+    # 2. All 7 extended lowercase mappings (Ž->o, Ŷ->n, Ă->a, Ŭ->k, Ś->h, Ɖ->p, Ƶ->u)
+    sample_5d = "ĐƌŽƌe ďŝůůŝŽŶ ƐŚĂƌe Ɖeƌ ĂŶŶƵŵͿ ůaŬhͿ ;ŝŶ"
+    rep_5d, _, _ = repair_degraded_page_text(sample_5d)
+    assert rep_5d == "crore billion share per annum) lakh) (in"
+
+    # 3. Leading U+001C ('\x1c' -> 'E') preserved through clean_text and repaired to 'Earnings'
+    raw_p58_line = "\x1carninŐs per share ;in ₹Ϳ"
+    cleaned_p58 = clean_text(raw_p58_line)
+    assert "\x1c" in cleaned_p58
+    rep_p58, _, _ = repair_degraded_page_text(cleaned_p58)
+    assert rep_p58 == "Earnings per share (in ₹)"
+
+    raw_p69_line = "\x1cĂƌŶŝŶŐƐ\x03Ɖeƌ\x03ƐŚĂƌe\x03ŝŶ\x03₹"
+    cleaned_p69 = clean_text(raw_p69_line)
+    rep_p69, _, _ = repair_degraded_page_text(cleaned_p69)
+    assert rep_p69 == "Earnings per share in ₹"
+
+    # 4. U+0DAE ('ථ') mapped to space separator
+    raw_dae = "Ĩoƌථ\x04ŐentŝĐ healthĐaƌe at theථ oĨ the zeaƌථ"
+    rep_dae, _, _ = repair_degraded_page_text(raw_dae)
+    assert rep_dae == "for Agentic healthcare at the of the Year"
 
 
 def test_phase5c_pdf_safety_invariants() -> None:

@@ -658,3 +658,33 @@ Applied the conflict-free glyph repair and clean-page vocabulary safety rules to
     - On **`q05`** (net profit margin), repairing `tcs-ar-26-p36-c1` (rank 4) restored `"The profit for the year attributable to shareholders (excluding exceptional items) for FY 2026 was ₹52,820 crore"` alongside `"revenue from operations for FY 2026 was ₹2,67,021 crore"`. The generator divided `52,820 / 2,67,021 = 19.78% [4]`, whereas `q05`'s `must_contain` expects the rounded 1-decimal headline figure `"19.8"` from `p8`/`p58` (which remain crowded out by 4 chunks of page 24).
     - On **`q14`** (profit growth excluding exceptional items), repairing page 36 promoted `tcs-ar-26-p36-c2` to rank 5 (`0.7185`). While `p36-c2`'s 200-char overlap start contains `"₹52,820 crore, registering a growth of 8.8%..."` (consolidated), the opening words `"The profit for the year attributable to shareholders (excluding exceptional items)"` for that sentence sit in `p36-c1` (outside top-6 due to 4 chunks of page 24), whereas `p36-c2` contains the complete **standalone** sentence (`"...(excluding exceptional items) in FY 2026 was ₹52,391 crore, registering a growth of 9.0%"`), so the generator cited `9.0% [5]`.
 
+---
+
+## Phase 5d — Extended Glyph Map, Leading-`E` (`U+001C`) Fix, Re-Index & Evaluation
+
+### 1. Step 1 (Read-Only): Validation of 7 Candidate Mappings & `U+0DAE` (`ථ`)
+- Validated all 7 candidate mappings across the 30 degraded TCS pages (`conflict = False` for all 7 against existing `CONFLICT_FREE_GLYPH_MAP`):
+  - `U+017D` (`Ž` $\to$ `o`, 11 tokens): `'ĐƌŽƌe'` $\to$ `'crore'` (`TCS_clean=523`, `BOTH_clean=1107`), `'ďŝůůŝŽŶ,'` $\to$ `'billion,'` (`TCS_clean=14`, `BOTH_clean=29`).
+  - `U+0176` (`Ŷ` $\to$ `n`, 7 tokens): `'ďŝůůŝŽŶ,'` $\to$ `'billion,'`, `'\x1cĂƌŶŝŶŐƐ'` $\to$ `'Earnings'` (`TCS_clean=43`, `BOTH_clean=123`), `'ŝŶ'` $\to$ `'in'` (`TCS_clean=2223`), `'ĂŶŶƵŵͿ'` $\to$ `'annum)'` (`TCS_clean=2`, `BOTH_clean=5`).
+  - `U+0102` (`Ă` $\to$ `a`, 6 tokens): `'\x1cĂƌŶŝŶŐƐ'` $\to$ `'Earnings'`, `'ƐŚĂƌe'` $\to$ `'share'` (`TCS_clean=121`), `'ĂŶŶƵŵͿ'` $\to$ `'annum)'` (`BOTH_clean=5`).
+  - `U+016C` (`Ŭ` $\to$ `k`, 6 tokens): `'ůaŬhͿ'` $\to$ `'lakh)'` (`TCS_clean=4`, `BOTH_clean=10`).
+  - `U+015A` (`Ś` $\to$ `h`, 3 tokens): `'ƐŚĂƌe'` $\to$ `'share'` (`TCS_clean=121`).
+  - `U+0189` (`Ɖ` $\to$ `p`, 3 tokens): `'Ɖeƌ'` $\to$ `'per'` (`TCS_clean=179`).
+  - `U+01B5` (`Ƶ` $\to$ `u`, 2 tokens): `'ĂŶŶƵŵͿ'` $\to$ `'annum)'` (`TCS_clean=2`, `BOTH_clean=5`).
+- **`U+0DAE` (`ථ`)**: In all 6 occurrences across `tcs-ar-26` pages 20 and 22 (`'^oůutionථon'`, `'Ĩoƌථ\x04ŐentŝĐ'`, `'at theථ'`, `'oĨ the zeaƌථ'`), `U+0DAE` unambiguously replaces a single space (`" "`).
+
+### 2. Step 2 (Read-Only): Why Leading `"E"` Was Dropped on `p58-c0` (`"arnings per share"`)
+- Raw PyMuPDF text on `tcs-ar-26` page 58: `'\x1carninŐs per share ;in ₹Ϳ'` (where `\x1c` = `U+001C` File Separator encodes uppercase `'E'`).
+- **Stage that dropped it**: `loader.clean_text` (`re.sub(r"\s+", " ", text).strip()`), because Python's Unicode `\s` and `str.strip()` treat `U+001C` as whitespace.
+- **Deterministic Fix**: Across all 743 pages of both PDFs, `U+001C` (`\x1c`) appears on only 4 lines (`tcs-ar-26` degraded pages `29, 58, 69, 83`) and is uppercase `'E'` in all 4 cases (`'Έ,KW\x1cΉ'`, `'\x1carninŐs per share ;in ₹Ϳ'`, `'\x1cĂƌŶŝŶŐƐ\x03Ɖeƌ\x03ƐŚĂƌe\x03ŝŶ\x03༤Ύ'`, `'EonͲ\x1cǆeĐutiǀe'`). Preserved `\x1c` in `loader.clean_text` and `_TOKEN_SPLIT_RE` and mapped `"\u001c": "E"` in `CONFLICT_FREE_GLYPH_MAP`.
+
+### 3. Steps 3–4: Implementation, Safety Invariants & 30-Page Census
+- Extended `CONFLICT_FREE_GLYPH_MAP` in `src/annual_report_rag/ingestion/glyph_repair.py` from `34` to `43` mappings and added unit tests in `tests/test_glyph_repair.py` and `tests/test_loader.py` (including `'ĂƌŶŝŶŐƐ' -> 'earnings'` and `'\x1carninŐs per share ;in ₹Ϳ' -> 'Earnings per share (in ₹)'`).
+- **30-Page Census (`Step 4`)**: Reduced residual dropped tokens across the 30 degraded TCS pages from **`40` (Phase 5c, `83.2%` repaired) to `12` (Phase 5d, `226/238 = 95.0%` repaired, `-28` dropped tokens)**. `22` of the `30` degraded pages now have `0` dropped tokens; only `11` unmapped non-ASCII characters remain across the 30 pages, all with count $\le 3$ (`Ψ: 3`, `͖: 2`, `ã: 2`, `Έ: 1`, `Ή: 1`, `Ύ: 1`, `χ: 1`, `φ: 1`, `υ: 1`, `ʹ: 1`, `Θ: 1`).
+
+### 4. Steps 5–6: Re-Index (`scripts/ingest.py --reset`), Evaluation (`exp5d-glyph-extra`, `exp5d-glyph-full`) & `q03` Chunk Rank
+- Re-indexed `3,110` chunks (`1,684` `infosys-ar-26`, `1,426` `tcs-ar-26`).
+- Evaluated `exp5d-glyph-extra` (`--retrieval-only`, `20261012T040638Z_exp5d-glyph-extra`) and `exp5d-glyph-full` (`--judge`, `20261012T040907Z_exp5d-glyph-full`):
+  - **vs. `exp5c-glyph-repair`**: Identical across all retrieval and generation metrics (`0` per-question outcome changes: `19 CORRECT`, `3 WRONG`, `3 FALSE_REFUSAL`, `4 CORRECT_REFUSAL`, `0 ANSWERED_ANYWAY`, `text_hit_all@6 = 0.8800`, `faithfulness_rate = 0.9545`, `citation_precision = 1.0000`).
+  - **vs. `baseline-v3`**: Same deltas as `exp5c-glyph-repair` (`text_hit_any@6` & `text_hit_all@6`: `0.8400 -> 0.8800` `+0.0400`; `q05` & `q14`: `FALSE_REFUSAL -> WRONG`; `0` regressions on `CORRECT` questions).
+- **Step 6 (`tcs-ar-26-p24-c4` & `q03`)**: `tcs-ar-26-p24-c4` holds the sentence `"Based on the company’s performance, the Board of Directors have declared three interim dividends of ₹11 each, a special dividend of ₹46, and recommended a final dividend of ₹31 (pending shareholders' approval at this A'M), for a total of ₹110 per share for FY 2026."` (repaired from `U+0F24` `༤` to `₹110`). For `q03`'s query, `tcs-ar-26-p24-c4` ranks **`12` / `1,426`** (`score = 0.7216`), and `tcs-ar-26-p36-c0` ranks **`85` / `1,426`** (`score = 0.6551`).

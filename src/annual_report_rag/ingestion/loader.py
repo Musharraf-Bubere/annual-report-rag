@@ -32,8 +32,8 @@ class LoadedPage:
 
 
 def clean_text(text: str) -> str:
-    """Normalizes consecutive whitespace characters into a single space and strips margins."""
-    return re.sub(r"\s+", " ", text).strip()
+    """Normalizes consecutive whitespace characters (preserving U+001C broken-font 'E') into a single space."""
+    return re.sub(r"[^\S\x1c]+", " ", text).strip(" \t\n\r\f\v")
 
 
 def filter_corrupted_tokens(

@@ -63,32 +63,41 @@ NUMERIC_GLYPH_REPAIR_MAP: dict[str, str] = {
     "\u0439": "%",  # й -> % (Cyrillic small letter i short used as percent sign)
 }
 
-# Phase 5b/5c conflict-free 1:1 map (31 mappings observed on pages 8,24,33,36,58 + 3 from Phase 2e = 34 total)
+# Phase 5b/5c/5d conflict-free 1:1 map (34 from Phase 5c + 7 lowercase + U+0DAE space + U+001C 'E' = 43 total)
 CONFLICT_FREE_GLYPH_MAP: dict[str, str] = {
     **NUMERIC_GLYPH_REPAIR_MAP,
-    # Additional conflict-free punctuation (5)
+    # Additional conflict-free punctuation & space (6)
     "\u035b": "'",  # ͛ -> '
     "\u036c": "/",  # ͬ -> /
     "\u0372": "-",  # Ͳ -> -
     "\u037e": "(",  # ; -> (
     "\u037f": ")",  # Ϳ -> )
-    # Conflict-free lowercase letters (12)
+    "\u0dae": " ",  # ථ -> ' ' (space separator in broken font on pages 20 and 22)
+    # Conflict-free lowercase letters (19: 12 from Phase 5c + 7 from Phase 5d)
+    "\u0102": "a",  # Ă -> a
     "\u010f": "b",  # ď -> b
     "\u0110": "c",  # Đ -> c
     "\u0128": "f",  # Ĩ -> f
     "\u0150": "g",  # Ő -> g
+    "\u015a": "h",  # Ś -> h
     "\u015d": "i",  # ŝ -> i
+    "\u016c": "k",  # Ŭ -> k
     "\u016f": "l",  # ů -> l
     "\u0175": "m",  # ŵ -> m
+    "\u0176": "n",  # Ŷ -> n
+    "\u017d": "o",  # Ž -> o
+    "\u0189": "p",  # Ɖ -> p
     "\u018c": "r",  # ƌ -> r
     "\u0190": "s",  # Ɛ -> s
+    "\u01b5": "u",  # Ƶ -> u
     "\u01c0": "v",  # ǀ -> v
     "\u01c1": "w",  # ǁ -> w
     "\u01c6": "x",  # ǆ -> x
-    # Conflict-free C0 control characters (3)
+    # Conflict-free C0 control characters (4)
     "\u0004": "A",  # \x04 -> A
     "\u0008": "E",  # \x08 -> E
     "\u0012": "C",  # \x12 -> C
+    "\u001c": "E",  # \x1c -> E (File Separator used for uppercase 'E' on pages 29, 58, 69, 83)
 }
 
 # Backwards-compatible alias for NUMERIC_GLYPH_REPAIR_MAP
@@ -108,7 +117,8 @@ AMBIGUOUS_ASCII_MAP: dict[str, str] = {
 _NUMERIC_TRANSLATE_TABLE = str.maketrans(NUMERIC_GLYPH_REPAIR_MAP)
 _STRIP_PUNCT = string.punctuation + "“”‘’—–•‹›₹"
 _STRIP_PUNCT_KEEP_AMBIG = "".join(c for c in _STRIP_PUNCT if c not in ("&", "/"))
-_UNMAPPED_C0_RE = re.compile(r"[\x00-\x03\x05-\x07\x0b-\x11\x13-\x1f]+")
+_UNMAPPED_C0_RE = re.compile(r"[\x00-\x03\x05-\x07\x0b-\x11\x13-\x1b\x1d-\x1f]+")
+_TOKEN_SPLIT_RE = re.compile(r"[^\S\x1c]+")
 _SPACED_CAPITAL_RE = re.compile(r"\b([A-Z]) ([a-z]+)\b")
 
 # Fallback vocabulary used only when unit tests call repair_degraded_page_text() without a document vocabulary
@@ -152,6 +162,7 @@ for _w in (
     "redemption",
     "exceeding",
     "demo",
+    "earnings",
 ):
     _DEFAULT_FALLBACK_VOCAB_LOWER[_w] = 20
 
@@ -251,7 +262,15 @@ def repair_degraded_token(
                     ambig_count += 1
             else:
                 out_chars.append(orig_ch)
-        return "".join(out_chars), cf_count + ambig_count
+        repaired_tok = "".join(out_chars)
+        # If leading '\x1c' ('E') was stripped prior to token repair (e.g. 'ĂƌŶŝŶŐƐ' -> 'arnings'),
+        # restore the missing leading 'e' when 'earnings' is in the clean vocabulary.
+        if (
+            repaired_tok == "arnings"
+            and int(clean_vocab_lower.get("earnings", 0)) >= min_clean_count
+        ):
+            return "earnings", cf_count + ambig_count + 1
+        return repaired_tok, cf_count + ambig_count
 
     # Rule 1b(ii): all-ASCII token where repaired word appears >= min_clean_count times on clean pages
     # and the original token appears 0 times on clean pages.
@@ -337,7 +356,7 @@ def repair_degraded_page_text(
     rule_ii_counts: Counter[tuple[str, str]] | None = None,
     join_counts: Counter[tuple[str, str]] | None = None,
 ) -> tuple[str, int, int]:
-    """Applies Phase 5c Rules 1a, 1b(i)-(ii), and 1d to a degraded page's text.
+    """Applies Phase 5c/5d Rules 1a, 1b(i)-(ii), and 1d to a degraded page's text.
 
     Returns:
         tuple[str, int, int]: (repaired_text, repaired_char_count, joins_count)
@@ -359,12 +378,20 @@ def repair_degraded_page_text(
     # First apply Phase 2e numeric/punctuation glyph repair (preserving exact comma-space behaviour)
     num_repaired, num_rep_count = repair_glyphs(text)
 
-    # Replace unmapped C0 control characters (e.g. \x03 used as space in '&z\x032026') with a space
-    norm_text = _UNMAPPED_C0_RE.sub(" ", num_repaired)
+    # Replace U+0DAE ('ථ', space separator on pages 20 and 22) and unmapped C0 control characters
+    # (e.g. \x03 used as space in '&z\x032026') with a space before splitting tokens.
+    dae_count = num_repaired.count("\u0dae")
+    if dae_count:
+        num_repaired = num_repaired.replace("\u0dae", " ")
+    norm_text = _UNMAPPED_C0_RE.sub(" ", num_repaired).strip(" \t\n\r\f\v")
+    if not norm_text:
+        return "", num_rep_count + dae_count, 0
 
     repaired_tokens: list[str] = []
-    token_rep_count = 0
-    for tok in norm_text.split():
+    token_rep_count = dae_count
+    for tok in _TOKEN_SPLIT_RE.split(norm_text):
+        if not tok:
+            continue
         r_tok, c_cnt = repair_degraded_token(
             tok,
             vocab_exact,

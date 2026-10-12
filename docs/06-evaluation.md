@@ -232,3 +232,32 @@ After applying the Phase 5c deterministic glyph repair (`34` conflict-free 1:1 m
 - **`q14` (`FALSE_REFUSAL -> WRONG`, `page_hit@6 = False`, `text_hit_all@6: False -> True`)**: Repairing page 36 promoted `tcs-ar-26-p36-c2` into the top 6 at rank 5 (`0.7185`). `p36-c2` starts in the 200-char overlap mid-sentence (`"₹52,820 crore, registering a growth of 8.8%..."`, giving `text_hit_all@6 = True` for `"8.8"`), while its subject `"The profit for the year attributable to shareholders (excluding exceptional items)"` sits in `p36-c1` (crowded out by 4 chunks of `p24`). Inside `p36-c2`, the complete **standalone** sentence states `"...(excluding exceptional items) in FY 2026 was ₹52,391 crore, registering a growth of 9.0%"`, so the generator cited `9.0% [5]`.
 - **`q30` (`FALSE_REFUSAL`, `page_hit@6 = True`, `text_hit_all@6 = True`)**: Retrieves `tcs-ar-26-p24-c5` at rank 1 (`0.7911`) and `tcs-ar-26-p24-c3` at rank 6 (`0.7383`, `"Earnings per share (Amount in H) ... FY 2026 145.67"`). Because `p24-c3` labels the chart `"Earnings per share"` without the qualifier `"excluding exceptional items"`, the generator conservatively refuses.
 
+---
+
+## 9. Phase 5d: Extended Glyph Map (`exp5d-glyph-extra` & `exp5d-glyph-full` vs. `baseline-v3` and `exp5c-glyph-repair`)
+
+In Phase 5d, we extended `CONFLICT_FREE_GLYPH_MAP` from `34` to `43` mappings (`Ž`$\to$`o`, `Ŷ`$\to$`n`, `Ă`$\to$`a`, `Ŭ`$\to$`k`, `Ś`$\to$`h`, `Ɖ`$\to$`p`, `Ƶ`$\to$`u`, `ථ`$\to$`" "`, and `\x1c`$\to$`E` with `loader.clean_text` preserving `\x1c`), reducing dropped tokens across the 30 degraded TCS pages from `40` (`83.2%` repaired) to **`12` (`226/238 = 95.0%` repaired; `22/30` degraded pages at `0` dropped tokens)**. After re-indexing (`3,110` chunks), we ran `--retrieval-only` (`20261012T040638Z_exp5d-glyph-extra`) and full evaluation with `--judge` (`20261012T040907Z_exp5d-glyph-full`).
+
+### A. Aggregate Comparison (`baseline-v3` vs. `exp5c-glyph-repair` vs. `exp5d-glyph-full`)
+
+| Metric | `baseline-v3` | `exp5c-glyph-repair` | `exp5d-glyph-full` | Delta (`5d - v3`) | Delta (`5d - 5c`) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| `page_hit@1` / `@3` / `@6` | `0.4800` / `0.8000` / `0.8400` | `0.4800` / `0.8000` / `0.8400` | `0.4800` / `0.8000` / `0.8400` | `0.0000` | `0.0000` |
+| `MRR` | `0.6480` | `0.6413` | `0.6413` | `-0.0067` | `0.0000` |
+| `text_hit_any@1` / `@3` / `@6` | `0.6000` / `0.7200` / `0.8400` | `0.6000` / `0.7200` / `0.8800` | `0.6000` / `0.7200` / **`0.8800`** | **`+0.0400` (`@6`)** | `0.0000` |
+| `text_hit_all@1` / `@3` / `@6` | `0.5600` / `0.7200` / `0.8400` | `0.5600` / `0.7200` / `0.8800` | `0.5600` / `0.7200` / **`0.8800`** | **`+0.0400` (`@6`)** | `0.0000` |
+| `distinct_pages@6` | `5.00` | `4.88` | `4.88` | `-0.12` | `0.00` |
+| `CORRECT` | `19` | `19` | `19` | `0` | `0` |
+| `WRONG` | `1` | `3` | `3` | `+2` (`q05`, `q14`) | `0` |
+| `FALSE_REFUSAL` | `5` | `3` | `3` | `-2` (`q05`, `q14`) | `0` |
+| `CORRECT_REFUSAL` | `4` | `4` | `4` | `0` | `0` |
+| `ANSWERED_ANYWAY` | `0` | `0` | `0` | `0` | `0` |
+| `grounded_rate` (answerable) | `0.8000` | `0.8800` | `0.8800` | `+0.0800` | `0.0000` |
+| `questions_with_unsupported_numbers` | `0` | `1` (`['q05']`) | `1` (`['q05']`) | `+1` | `0` |
+| `faithfulness_rate` | `1.0000` (`20/20`) | `0.9545` (`21/22`) | `0.9545` (`21/22`) | `-0.0455` | `0.0000` |
+| `citation_precision` | `1.0000` (`34/34`) | `1.0000` (`38/38`) | `1.0000` (`39/39`) | `0.0000` | `0.0000` |
+| `avg_cost_per_query_usd` | `$0.000691` | `$0.000702` | `$0.000704` | `+$0.000013` | `+$0.000002` |
+
+### B. `q03` Dividend Chunk Analysis (`Step 6`)
+- **`tcs-ar-26-p24-c4`** contains the repaired sentence: `"Based on the company’s performance, the Board of Directors have declared three interim dividends of ₹11 each, a special dividend of ₹46, and recommended a final dividend of ₹31 (pending shareholders' approval at this A'M), for a total of ₹110 per share for FY 2026."`
+- For `q03` (`"What dividend did TCS declare for fiscal 2026?"`), `tcs-ar-26-p24-c4` ranks **`12` / `1,426`** (`score = 0.7216`), while `tcs-ar-26-p24-c5` (rank 2, `0.7524`), `tcs-ar-26-p24-c6` (rank 5, `0.7429`), and `tcs-ar-26-p24-c1` (rank 6, `0.7330`) take 3 of the top 6 slots, leaving `p24-c4` just outside top-6.
