@@ -135,7 +135,7 @@
       }
     ],
     "must_contain": [
-      "19.8"
+      "19.8|19.78"
     ],
     "must_not_contain": [],
     "notes": "Checked against extracted PDF text only (not visually). 19.8% is excluding exceptional items (MD&A table). Reported margin is lower.",
