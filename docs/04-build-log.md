@@ -498,8 +498,8 @@ Phase 4a gave us deterministic retrieval and lexical/numeric outcome metrics (`b
   - **Manual spot-check of `judge_review.md`**: Across `q01, q02, q03, q06, q07, q08`, every cited passage literally contains the exact figure claimed (`q03` is `WRONG` on completeness because it cited `11,000%` of paid-up value from p36 without the per-share `₹110`, but `11,000%` is 100% faithful to p36). On **`q09`**, the sentence *"In contrast, Infosys reported a consolidated revenue growth of 9.6% (reaching ₹1,78,650 crore) and a constant currency revenue growth of 3.1% [5][6]"* cites `[5]` (p77, which contains all three figures: `9.6%`, `₹1,78,650 crore`, and `3.1%`) and `[6]` (p33, which contains `9.6%` and `₹1,78,650 crore`, but **not** `3.1%`). Because the judge prompt asks whether each cited passage *"supports at least one claim in the answer that cites it"*, `[6]` legitimately supports two of the three claims in that sentence and was marked `supports=True`.
 
 #### 3. `baseline-v1-repeats` (`uv run python scripts/run_eval.py --label baseline-v1-repeats --repeats 3 --limit 6` — 0 calls for repeat 0 + 12 calls for repeats 1–2)
-- Evaluated `q01`–`q06` across 3 repeats ($6 \times 3 = 18$ generation calls):
-  - **`flip_rate = 0.0000`**: Every single question produced the exact same deterministic outcome across all 3 repeats (`q01` `CORRECT` x3, `q02` `CORRECT` x3, `q03` `WRONG` x3, `q04` `FALSE_REFUSAL` x3, `q05` `FALSE_REFUSAL` x3, `q06` `CORRECT` x3).
+- Evaluated `q01`–`q06` across 3 repeats ($6 \times 3 = 18$ generation calls, default `temperature = 1.0`):
+  - **`flip_rate = 0.0000`**: Every single question produced the exact same outcome across all 3 repeats (`q01` `CORRECT` x3, `q02` `CORRECT` x3, `q03` `WRONG` x3, `q04` `FALSE_REFUSAL` x3, `q05` `FALSE_REFUSAL` x3, `q06` `CORRECT` x3), demonstrating empirical stability across stochastic samples.
   - **`accuracy = 0.5000 (0.5000–0.5000)`** across repeats on `q01`–`q06`.
   - **Latency ($n=18$)**: `generate_ms p50 = 1203.94 ms`, `p95 = 21973.48 ms`, `max = 46245.92 ms` (one call encountered a per-minute 429 rate-limit sleep of ~44s before succeeding, illustrating why reporting `max` and `(n=18)` alongside `p95` is essential).
 
@@ -544,8 +544,8 @@ Evaluated the corrected `dev` split (`29` ready questions out of `30`; `q27` ski
    - **Retrieval ($n=25$ answerable)**: `page_hit@1 = 0.4800`, `page_hit@3 = 0.7600`, `page_hit@6 = 0.8000`, `MRR = 0.6280`, `text_hit_any@1/@3/@6 = 0.6000 / 0.6800 / 0.8000`, `text_hit_all@1/@3/@6 = 0.5600 / 0.6800 / 0.8000`, `distinct_pages@6 = 5.00`.
    - **Answer Outcomes ($n=29$)**: `18 CORRECT`, `2 WRONG` (`q03`, `q25`), `5 FALSE_REFUSAL` (`q05`, `q14`, `q22`, `q26`, `q30`), `4 CORRECT_REFUSAL` (`q10`, `q11`, `q38`, `q39`), `0 ANSWERED_ANYWAY`. `grounded_rate = 0.8000`, `questions_with_unsupported_numbers = 1` (`['q33']`, where the chunk prints `"2025-26"` while the answer echoes `"fiscal 2026"` from the question).
    - **Faithfulness Judge ($n=20$ grounded answers)**: `faithfulness_rate = 1.0000` (`20/20`), `citation_precision = 1.0000` (`34/34`), `judge_error = 0`.
-2. **`baseline-v1-full-repeats` (`--repeats 3`, `split=dev`, $n=87$ passes)**:
-   - **`flip_rate = 0.0000`**: All 29 `dev` questions produced the exact same deterministic outcome across all 3 repeats (`accuracy = 0.7586`, `answerable_accuracy = 0.7200`).
+2. **`baseline-v1-full-repeats` (`--repeats 3`, `split=dev`, $n=87$ passes, default `temperature = 1.0`)**:
+   - **`flip_rate = 0.0000`**: All 29 `dev` questions produced the exact same outcome across all 3 repeats (`accuracy = 0.7586`, `answerable_accuracy = 0.7200`), showing consistent answer stability across live samples.
 
 ---
 

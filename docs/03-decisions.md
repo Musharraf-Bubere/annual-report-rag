@@ -556,11 +556,11 @@ This document captures key design decisions, their rationale, alternatives consi
 
 ### Decision 45: Multi-Repeat Evaluation (`--repeats N`), Cache Bypass on Repeats $> 0$, and `flip_rate`
 
-* **Context:** Because Gemini 3.x runs at its recommended default `temperature = 1.0`, generation is stochastic. A single evaluation pass (`--repeats 1`) cannot tell whether a question is stably `CORRECT` or flipping between `CORRECT` and `WRONG` across calls.
-* **Choice:** Add `--repeats N` (default `1`) to `scripts/run_eval.py`:
+* **Context:** In `settings.yaml`, `generation.temperature` is `null` (model default `1.0`, verified per Gemini model metadata on 2026-10-13 for `gemini-3.5-flash-lite`). All runs from `baseline-v3` through `exp5h-frozen-candidate` used this default temperature `1.0`, and the model ID or backend checkpoint may evolve server-side. At `temperature = 1.0`, generation is stochastic. A single evaluation pass (`--repeats 1`) cannot tell whether a question is stably `CORRECT` or flipping between `CORRECT` and `FALSE_REFUSAL` across calls.
+* **Choice:** Add `--repeats N` (default `1`; the sealed test run will use `--repeats 3`) to `scripts/run_eval.py`:
   1. Retrieval runs once per question (since local ONNX embeddings and Chroma search are deterministic).
   2. Generation runs $N$ times per question: repeat index `0` uses the evaluation cache (`data/eval/cache/`), while repeats `1..N-1` **bypass the cache** to sample true live LLM variance.
-  3. Report `flip_rate` (fraction of questions whose deterministic `outcome` was not identical across all $N$ repeats) and `accuracy (min–max)` across repeats.
+  3. Report `flip_rate` (fraction of questions whose deterministic `outcome` was not identical across all $N$ repeats) and `accuracy (min–max)` across repeats. A stable `flip_rate` is empirical evidence of stability across stochastic samples, rather than algorithmic determinism.
 * **Reason:** Quantifies generation stability directly while preserving zero-call cache reuse for the first pass.
 
 ---

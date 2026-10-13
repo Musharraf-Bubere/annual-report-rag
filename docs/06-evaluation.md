@@ -62,9 +62,11 @@ When `--judge` is passed, `judge_answer()` runs **only on answers with `grounded
 
 ### D. Repeats & Stability (`--repeats N`)
 
-Because `generation.temperature` is left at the Gemini 3.x model default (`1.0`), answers can vary across uncached runs. Running `--repeats N` (default `1`) evaluates each question $N$ times (with `repeat_index` included in the cache key):
+`generation.temperature` is set to `null` in `config/settings.yaml` (using the model default `1.0`, verified per Gemini model metadata on 2026-10-13 for `gemini-3.5-flash-lite`). All evaluation runs from `baseline-v3` through `exp5h-frozen-candidate` were executed at this default temperature `1.0`. Note that the exact backend checkpoint and model ID may evolve or be updated server-side by the provider.
+
+Because generation runs at default temperature `1.0` rather than temperature `0`, individual generation passes are stochastic. Running `--repeats N` (default `1`; the sealed test run will use `--repeats 3`) evaluates each question $N$ times (with `repeat_index` included in the cache key) to test consistency:
 - **`accuracy` (mean, min–max)**: Mean pass rate across the $N$ repeats along with the `[min, max]` range across repeats.
-- **`flip_rate`**: Fraction of evaluated questions whose deterministic outcome (`CORRECT`, `WRONG`, `FALSE_REFUSAL`, etc.) differed across repeats.
+- **`flip_rate`**: Fraction of evaluated questions whose outcome (`CORRECT`, `WRONG`, `FALSE_REFUSAL`, etc.) differed across repeats. In an LLM pipeline operating at temperature `1.0`, a low or zero `flip_rate` is empirical evidence of answer stability across stochastic samples, rather than proof of algorithmic determinism.
 
 ### E. Performance, Token Usage, and Sample Size (`n`)
 
@@ -452,3 +454,6 @@ Before `--split test` can run, `scripts/run_eval.py` verifies:
    - Golden questions file (`3d91929a252fae97ac4585833bda97d611133badbfa55814e983769639552f4c`)
    - Total Chroma index chunk count (`3110`)
    - **Candidate Freeze Hash**: **`17c942d0d1efcacc3ce597b8141e4a9f43936354fa93393ab01e66b6b3e09226`**
+4. HEAD equals the commit pointed to by tag `frozen-config-v1`.
+
+*(Plan Note: The sealed test run will be executed with `--repeats 3` to measure held-out test stability across stochastic passes).*
