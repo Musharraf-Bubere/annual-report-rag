@@ -824,9 +824,9 @@ Applied the conflict-free glyph repair and clean-page vocabulary safety rules to
 ### 4. Step 4: Full Dev Eval (`exp5h-frozen-candidate`, `--repeats 3 --judge`)
 - Ran `scripts/run_eval.py --split dev --hybrid --neighbor-window 1 --neighbor-top-n 6 --max-context-chunks 10 --rules-v2 --repeats 3 --judge --label exp5h-frozen-candidate`.
 - All 30 dev questions evaluated (`26` answerable, `4` unanswerable, now with `q27` answerable on p144 and `q22` reworded to *"in rupees"*):
-  - **Retrieval (`26` answerable)**: `page_hit@1 = 0.4615 (12/26)`, `page_hit@3 = 0.7692 (20/26)`, `page_hit@6 = 0.9615 (25/26)`, `MRR = 0.6596`, `text_hit_all@6 = 0.9615 (25/26)`, `text_hit_all@context = 1.0000 (26/26, 100%)`.
-  - **Generation Outcomes (Repeat 0)**: **`26 CORRECT / 26` (`100%` answerable), `0 WRONG`, `0 FALSE_REFUSAL`, `4 CORRECT_REFUSAL / 4` (`100%` unanswerable), `0 ANSWERED_ANYWAY`**.
-  - **Stability & Faithfulness**: `accuracy = 0.9778 (0.9667–1.0000)`, `answerable_accuracy = 0.9744 (0.9615–1.0000)`, `flip_rate = 0.0333` (`['q35']`, which scored `[CORRECT, FALSE_REFUSAL, FALSE_REFUSAL]`), `faithfulness_rate = 0.9615 (25/26)`, `citation_precision = 0.9592 (47/49)`.
+  - **Retrieval (`26` answerable)**: `page_hit@1 = 0.4615 (12/26)`, `page_hit@3 = 0.7692 (20/26)`, `page_hit@6 = 0.9615 (25/26)`, `MRR = 0.6596`, `text_hit_all@6 = 0.9615 (25/26)` (miss on `q27` whose target chunk is at neighbour position `[7]`), `text_hit_all@context = 1.0000 (26/26, 100%)`.
+  - **Generation Outcomes (Repeat 0)**: `26 CORRECT / 26` answerable, `0 WRONG`, `0 FALSE_REFUSAL`, `4 CORRECT_REFUSAL / 4` unanswerable, `0 ANSWERED_ANYWAY`.
+  - **Headline Accuracy & Stability**: **`accuracy = 0.9778 (0.9667–1.0000)`** (3-repeat mean), `answerable_accuracy = 0.9744 (0.9615–1.0000)`, `flip_rate = 0.0333` (`['q35']`, which scored `[CORRECT, FALSE_REFUSAL, FALSE_REFUSAL]` across 3 repeats on identical retrieved context), `faithfulness_rate = 0.9615 (25/26)`, `citation_precision = 0.9592 (47/49)`.
   - **Cost & Latency**: `avg_input_tokens = 3135.4`, `avg_cost_per_query_usd = $0.001036`, `retrieve_ms` p50 = `61.23 ms`, `total_ms` p50 = `1213.10 ms`.
   - Note: This run incorporates both the Rule 9 silence fix and the re-indexed store, as well as the updated dev golden questions (`q22` and `q27`).
 

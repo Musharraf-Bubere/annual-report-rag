@@ -124,7 +124,11 @@ uv run python scripts/run_judge_calibration.py
 1. **Same-Family Judge Bias (Self-Preference / Shared Blind Spots)**: Both the answer generator and the faithfulness judge currently use the same `GenerationProvider` (`gemini-3.1-flash-lite-preview`). An LLM judge from the same model family as the generator is systematically biased toward agreeing with the generator's phrasing and shares the same reasoning blind spots. Always spot-check the generated `data/eval/runs/<ts>_<label>_judge_review.md` by hand.
 2. **Sub-Claim Granularity in Multi-Citation Sentences**: The judge prompt grades whether each cited passage *"supports at least one claim in the answer that cites it."* When a sentence makes multiple sub-claims and attaches `[5][6]` at the end, if `[6]` supports two of the three sub-claims while `[5]` supports all three, `[6]` is marked `supports=True`.
 3. **Unverified & Draft Questions (`human_verified = false`)**: In `golden_questions.json`, `20` of `40` questions still have `human_verified=false` (`20` are `human_verified=true`; `39` are `ready_unverified` and `1` is `draft_needs_fill`). Unverified questions must not be used for final headline numbers until verified against the source PDFs.
-4. **Weak Lexical Labels & Single Corpus**: Deterministic `must_contain` labels only check token presence, and all current questions come from two FY2025–26 Indian IT services reports (`tcs-ar-26`, `infosys-ar-26`).
+4. **Model Non-Determinism on Borderline Answers (`q35` Weak Spot)**: Even on byte-identical retrieved context, stochastic model generation at temperature 1.0 can cause flips between refusal and answer. On `q35` (*"Which firm is Infosys's current statutory auditor?"*), across 3 repeats on identical context, the model scored `[CORRECT, FALSE_REFUSAL, FALSE_REFUSAL]`.
+5. **Qualifier & Citation Imprecision (`q30` & `q14`)**:
+   - `q30` (*"What was TCS's earnings per share for fiscal 2026, excluding exceptional items?"*): The generator correctly retrieved the consolidated financial table on page 58 (`₹145.99`), but the table row omits the exact qualifier text `"excluding exceptional items"`, leading the LLM judge to flag `"excluding exceptional items"` as an unsupported claim (`judge_faithful=False`).
+   - `q14` (*"By what percentage did TCS's profit attributable to shareholders, excluding exceptional items, grow in fiscal 2026?"*): The generator grouped citations `[1][2][3]` for a single sentence; the judge found `[2]` supporting (`8.8%`) while marking `[1]` (which split the growth clause across chunks) and `[3]` (exceptional items breakdown on page 35) as non-supporting, reducing citation precision.
+6. **Weak Lexical Labels & Single Corpus**: Deterministic `must_contain` labels only check token presence, and all current questions come from two FY2025–26 Indian IT services reports (`tcs-ar-26`, `infosys-ar-26`).
 
 ---
 
@@ -411,15 +415,15 @@ In Phase 5e (no re-index), we added `retrieval.neighbor_window` (default `0`) an
 | `page_hit@1` / `@3` / `@6` | `0.4400` / `0.7600` / `0.9600` | `0.4615` / `0.7692` / `0.9615` | `+0.0215` / `+0.0092` / `+0.0015` |
 | `MRR` | `0.6460` | `0.6596` | `+0.0136` |
 | `text_hit_all@6` | `1.0000` (`25/25`) | `0.9615` (`25/26`)* | `-0.0385`* |
-| `text_hit_all@context` | **`1.0000` (`25/25`)** | **`1.0000` (`26/26`)** | **`0.0000` (`100%`)** |
+| `text_hit_all@context` | **`1.0000` (`25/25`)** | **`1.0000` (`26/26`)** | **`0.0000`** |
 | `mean_context_chunks` | `10.00` | `10.00` | `0.00` |
-| `CORRECT` (repeat 0) | `24` (`/25` answerable) | **`26` (`/26` answerable, 100%)** | **`+2`** |
+| `accuracy` (3-repeat mean, min–max) | `0.9333` (`0.9333–0.9333`) | **`0.9778` (`0.9667–1.0000`)** | **`+0.0445`** |
+| `answerable_accuracy` (3-repeat mean) | `0.9600` (`24/25`) | **`0.9744` (`0.9615–1.0000`)** | **`+0.0144`** |
+| `CORRECT` (repeat 0) | `24` (`/25` answerable) | `26` (`/26` answerable) | `+2` |
 | `WRONG` (repeat 0) | `1` (`q22`) | **`0`** | **`-1`** |
 | `FALSE_REFUSAL` (repeat 0) | `0` | **`0`** | `0` |
-| `CORRECT_REFUSAL` (repeat 0) | `4` (`/5` unanswerable) | **`4` (`/4` unanswerable, 100%)** | `0` |
+| `CORRECT_REFUSAL` (repeat 0) | `4` (`/5` unanswerable) | `4` (`/4` unanswerable) | `0` |
 | `ANSWERED_ANYWAY` (repeat 0) | `1` (`q27`) | **`0`** | **`-1`** |
-| `accuracy` (repeat 0 / 3-rep mean) | `0.9333` / `0.9333` | **`1.0000` / `0.9778` (`0.9667–1.0000`)** | **`+0.0445`** |
-| `answerable_accuracy` (mean) | `0.9600` (`24/25`) | **`0.9744` (`0.9615–1.0000`)** | **`+0.0144`** |
 | `flip_rate` (3 repeats) | `0.0000` (`[]`) | `0.0333` (`['q35']`)* | `+0.0333` |
 | `grounded_rate` (answerable) | `1.0000` | `1.0000` | `0.0000` |
 | `questions_with_unsupported_numbers` | `0` (`[]`) | `0` (`[]`) | `0` |
@@ -430,8 +434,8 @@ In Phase 5e (no re-index), we added `retrieval.neighbor_window` (default `0`) an
 | `retrieve_ms` p50 / `total_ms` p50 | `96.30` / `1257.97` | `61.23` / `1213.10` | `-35.07` / `-44.87` |
 
 *\*Notes on `text_hit_all@6` and `flip_rate`:*
-- `text_hit_all@6` shows `0.9615` because for `q34`, the primary retriever surfaces page 90 (which contains `"23,419"`), whereas the golden dataset lists page 106. In expanded context, `text_hit_all@context` is `1.0000 (26/26)`.
-- `q35` scored `[CORRECT, FALSE_REFUSAL, FALSE_REFUSAL]` across 3 repeats due to stochastic generation temperature at threshold.
+- `text_hit_all@6` is `0.9615 (25/26)` because for `q27`, the required target chunk (`infosys-ar-26-p144-c1`) is retrieved at neighbour position `[7]` (expanded from primary hit `p144-c2`) rather than in the primary top 6. In the expanded context, `text_hit_all@context` is `1.0000 (26/26)`. (For `q34`, the primary retriever surfaces page 90 which contains `"B S R"`, satisfying `text_hit_all@6 = True`, though page 90 was not among golden expected pages).
+- `q35` scored `[CORRECT, FALSE_REFUSAL, FALSE_REFUSAL]` across 3 repeats due to stochastic generation temperature at threshold on identical retrieved context (`flip_rate = 0.0333`). Headline accuracy is reported as the 3-repeat mean: **`0.9778`**.
 
 ### C. Per-Question Changes vs. `exp5g-hybrid`
 1. **`q22` (`WRONG -> CORRECT`)**: User reworded query to specify *"in rupees"*; generator answered `"₹66,838 crore on a consolidated basis [6]"` from `tcs-ar-26-p24-c2`.

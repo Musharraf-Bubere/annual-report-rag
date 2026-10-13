@@ -252,7 +252,33 @@ def verify_test_split_safeguard(
             "The current configuration does not match the frozen tag configuration."
         )
 
-    print(f"  Freeze Hash Match:       VERIFIED (matches tag '{tag_name}' annotation)\n")
+    # (d) Check HEAD equals the commit the tag points to
+    head_rev_proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    tag_rev_proc = subprocess.run(
+        ["git", "rev-parse", f"{tag_name}^{{commit}}"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    head_commit = head_rev_proc.stdout.strip()
+    tag_commit = tag_rev_proc.stdout.strip()
+    if head_commit != tag_commit:
+        raise RuntimeError(
+            f"Refusing to run --split test: HEAD does not match tagged commit.\n"
+            f"  HEAD commit:       {head_commit}\n"
+            f"  Tag commit:        {tag_commit}\n"
+            f"Checkout the tag '{tag_name}' or commit {tag_commit} before evaluating test split."
+        )
+
+    print(f"  Freeze Hash Match:       VERIFIED (matches tag '{tag_name}' annotation)")
+    print(f"  Tag Commit Match:        VERIFIED (HEAD is {head_commit[:10]})\n")
     return freeze_hash
 
 

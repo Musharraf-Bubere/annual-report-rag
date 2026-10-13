@@ -811,9 +811,11 @@ def test_verify_test_split_safeguards(tmp_path: Path) -> None:
             repo_dir=repo,
         )
 
-    # Success Case: Tag annotation contains the computed freeze hash
     freeze_hash, _details = compute_freeze_hash(settings, golden_file, 100)
     assert len(freeze_hash) == 64
+
+    # Refusal Case 4: HEAD commit does not equal tag commit
+    # Re-tag the initial commit with the correct freeze hash
     subprocess.run(["git", "tag", "-d", "frozen-config-v1"], cwd=repo, check=True, capture_output=True)
     subprocess.run(
         ["git", "tag", "-a", "frozen-config-v1", "-m", f"Freeze hash: {freeze_hash}"],
@@ -821,6 +823,21 @@ def test_verify_test_split_safeguards(tmp_path: Path) -> None:
         check=True,
         capture_output=True,
     )
+    # Create another commit so HEAD moves forward past the tag
+    dummy_file = repo / "another_file.txt"
+    dummy_file.write_text("commit after tag", encoding="utf-8")
+    subprocess.run(["git", "add", "another_file.txt"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "second commit"], cwd=repo, check=True, capture_output=True)
+    with pytest.raises(RuntimeError, match="HEAD does not match tagged commit"):
+        verify_test_split_safeguard(
+            settings=settings,
+            golden_path=golden_file,
+            store_count=100,
+            repo_dir=repo,
+        )
+
+    # Success Case: Checkout the tagged commit so HEAD == tag commit
+    subprocess.run(["git", "checkout", "frozen-config-v1"], cwd=repo, check=True, capture_output=True)
     verified_hash = verify_test_split_safeguard(
         settings=settings,
         golden_path=golden_file,
