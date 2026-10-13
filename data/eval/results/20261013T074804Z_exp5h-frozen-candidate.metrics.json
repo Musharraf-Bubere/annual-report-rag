@@ -11,7 +11,11 @@
   "status": "completed",
   "store_fingerprint": "596ee2840c4dbbd540bb49004a6976d136c5914af49f1064da844976b5c08d4b",
   "num_questions": 30,
-  "all_human_verified": false,
+  "all_human_verified": true,
+  "answerable_count": 26,
+  "human_verified_answerable_count": 26,
+  "unanswerable_count": 4,
+  "human_verified_summary": "26/26 answer keys human-verified (4 refusal/adversarial questions have no key)",
   "retrieval": {
     "answerable_count": 26,
     "page_hit_at_1": 0.4615,

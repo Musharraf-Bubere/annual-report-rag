@@ -471,6 +471,15 @@ def _aggregate_summary(
 
     answerable_recs = [r for r in primary_records if r.answerable]
     n_ans = len(answerable_recs)
+    unanswerable_recs = [r for r in primary_records if not r.answerable]
+    ans_verified_count = sum(1 for r in answerable_recs if r.human_verified)
+    ans_total_count = len(answerable_recs)
+    unans_count = len(unanswerable_recs)
+    all_human_verified = bool(answerable_recs) and (ans_verified_count == ans_total_count)
+    human_verified_summary = (
+        f"{ans_verified_count}/{ans_total_count} answer keys human-verified "
+        f"({unans_count} refusal/adversarial questions have no key)"
+    )
 
     def _mean_bool(vals: Sequence[bool | None]) -> float:
         clean = [1.0 if v else 0.0 for v in vals if v is not None]
@@ -688,7 +697,11 @@ def _aggregate_summary(
         "status": status,
         "store_fingerprint": store_fp,
         "num_questions": len(primary_records),
-        "all_human_verified": bool(primary_records) and all(r.human_verified for r in primary_records),
+        "all_human_verified": all_human_verified,
+        "answerable_count": ans_total_count,
+        "human_verified_answerable_count": ans_verified_count,
+        "unanswerable_count": unans_count,
+        "human_verified_summary": human_verified_summary,
         "retrieval": retrieval_metrics,
         "answers": answer_metrics,
         "faithfulness": faithfulness_metrics,
@@ -907,6 +920,7 @@ def rescore_run(
     label: str = "baseline-v2",
     store: ChromaStore | None = None,
     eval_dir: Path | str | None = None,
+    preserve_timestamp: bool = False,
 ) -> EvalRunOutput:
     """Rescores cached answers and retrieved chunks from a prior run using the current scorer, with zero API or judge calls."""
     base_eval_dir = (
@@ -1014,7 +1028,7 @@ def rescore_run(
             total_ms=float(old_rec.get("total_ms", 0.0)),
             input_tokens=old_rec.get("input_tokens"),
             output_tokens=old_rec.get("output_tokens"),
-            from_cache=True,
+            from_cache=bool(old_rec.get("from_cache", False)),
             retrieved_top6=top6_refs,
             citations=cit_refs,
             split=q.split,
@@ -1042,7 +1056,10 @@ def rescore_run(
             }
         )
 
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    if preserve_timestamp and src_summary.get("timestamp"):
+        timestamp = str(src_summary["timestamp"])
+    else:
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     safe_label = "".join(c if c.isalnum() or c in "-_" else "-" for c in label)
     stem = f"{timestamp}_{safe_label}"
     status = str(src_summary.get("status", "completed"))

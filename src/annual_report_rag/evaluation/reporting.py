@@ -103,6 +103,29 @@ def format_markdown_report(summary: dict[str, Any]) -> str:
     repeats = int(summary.get("repeats", 1))
     num_questions = int(summary.get("num_questions", 0))
     all_human_verified = bool(summary.get("all_human_verified", False))
+    ans_total = summary.get("answerable_count")
+    ans_verified = summary.get("human_verified_answerable_count")
+    unans_count = summary.get("unanswerable_count")
+    verification_summary = summary.get("human_verified_summary")
+    if verification_summary is None or ans_total is None or ans_verified is None:
+        qs = summary.get("questions", [])
+        ans_qs = [
+            q
+            for q in qs
+            if q.get("answerable", False)
+            or bool(q.get("expected_pages"))
+            or bool(q.get("must_contain"))
+        ]
+        ans_total = len(ans_qs)
+        ans_verified = sum(1 for q in ans_qs if q.get("human_verified", False))
+        unans_count = len(qs) - ans_total
+        verification_summary = (
+            f"{ans_verified}/{ans_total} answer keys human-verified "
+            f"({unans_count} refusal/adversarial questions have no key)"
+        )
+        if "all_human_verified" not in summary:
+            all_human_verified = bool(ans_total > 0 and ans_verified == ans_total)
+
     include_drafts = bool(summary.get("include_drafts", False))
     skipped_draft_count = int(summary.get("skipped_draft_count", 0))
     skipped_draft_reason = summary.get(
@@ -132,7 +155,7 @@ def format_markdown_report(summary: dict[str, Any]) -> str:
         if num_questions < 30:
             reasons.append(f"fewer than 30 questions ({num_questions})")
         if not all_human_verified:
-            reasons.append("one or more questions have `human_verified=false`")
+            reasons.append(verification_summary)
         lines.append(
             f"> [!WARNING]\n> **PRELIMINARY RESULTS**: {', '.join(reasons)}. "
             "Treat these metrics as directional engineering signals rather than statistically final benchmarks."

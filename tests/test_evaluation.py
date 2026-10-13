@@ -35,8 +35,17 @@ from annual_report_rag.evaluation.metrics import (
     text_hit_any_at_k,
     text_hit_at_k,
 )
-from annual_report_rag.evaluation.reporting import compare_metrics_dicts
-from annual_report_rag.evaluation.runner import compute_cache_key, rescore_run, run_eval
+from annual_report_rag.evaluation.reporting import (
+    QuestionOutcomeRecord,
+    compare_metrics_dicts,
+    format_markdown_report,
+)
+from annual_report_rag.evaluation.runner import (
+    _aggregate_summary,
+    compute_cache_key,
+    rescore_run,
+    run_eval,
+)
 from annual_report_rag.generation.prompts import NOT_FOUND_MESSAGE
 from annual_report_rag.ingestion.chunker import Chunk
 from annual_report_rag.providers.base import (
@@ -845,4 +854,112 @@ def test_verify_test_split_safeguards(tmp_path: Path) -> None:
         repo_dir=repo,
     )
     assert verified_hash == freeze_hash
+
+
+def test_human_verified_counts_answerable_only_and_format() -> None:
+    """Verifies that all_human_verified counts answerable questions only,
+
+    and that the PRELIMINARY RESULTS line formats verification as
+    'X/Y answer keys human-verified (Z refusal/adversarial questions have no key)'.
+    """
+    settings = _build_test_settings()
+
+    def _make_rec(qid: str, answerable: bool, verified: bool, outcome_val: str = "CORRECT") -> QuestionOutcomeRecord:
+        return QuestionOutcomeRecord(
+            id=qid,
+            question=f"Question {qid}?",
+            type="fact" if answerable else "unanswerable",
+            answerable=answerable,
+            human_verified=verified,
+            expected_quality_slice="clean",
+            page_hit_at_1=True if answerable else None,
+            page_hit_at_3=True if answerable else None,
+            page_hit_at_6=True if answerable else None,
+            reciprocal_rank=1.0 if answerable else None,
+            text_hit_at_6=True if answerable else None,
+            outcome=outcome_val,
+            grounded=True,
+            reason=None,
+            invalid_citations=0,
+            unsupported_numbers=[],
+            retrieve_ms=10.0,
+            generate_ms=20.0,
+            total_ms=30.0,
+            input_tokens=100,
+            output_tokens=50,
+        )
+
+    # Case 1: 30 total questions: 26 answerable (all verified=True), 4 unanswerable (verified=False)
+    # Since all 26 answerable questions are verified and total >= 30, all_human_verified must be True
+    # and no PRELIMINARY RESULTS warning should be emitted.
+    records_30 = [_make_rec(f"q{i:02d}", answerable=True, verified=True) for i in range(1, 27)]
+    records_30 += [_make_rec(f"q{i:02d}", answerable=False, verified=False, outcome_val="CORRECT_REFUSAL") for i in range(27, 31)]
+
+    summary_30 = _aggregate_summary(
+        all_records=records_30,
+        settings=settings,
+        label="test-verified-30",
+        timestamp="20261013T120000Z",
+        retrieval_only=False,
+        status="completed",
+        store_fp="test_fp",
+        split="dev",
+        repeats=1,
+        use_judge=False,
+    )
+
+    assert summary_30["num_questions"] == 30
+    assert summary_30["all_human_verified"] is True
+    assert summary_30["answerable_count"] == 26
+    assert summary_30["human_verified_answerable_count"] == 26
+    assert summary_30["unanswerable_count"] == 4
+    expected_str = "26/26 answer keys human-verified (4 refusal/adversarial questions have no key)"
+    assert summary_30["human_verified_summary"] == expected_str
+
+    md_30 = format_markdown_report(summary_30)
+    assert "PRELIMINARY RESULTS" not in md_30
+
+    # Case 2: 30 questions, but 6 of 26 answerable questions have verified=False
+    records_unverified = [_make_rec(f"q{i:02d}", answerable=True, verified=(i <= 20)) for i in range(1, 27)]
+    records_unverified += [_make_rec(f"q{i:02d}", answerable=False, verified=False, outcome_val="CORRECT_REFUSAL") for i in range(27, 31)]
+
+    summary_unverified = _aggregate_summary(
+        all_records=records_unverified,
+        settings=settings,
+        label="test-unverified-30",
+        timestamp="20261013T120000Z",
+        retrieval_only=False,
+        status="completed",
+        store_fp="test_fp",
+        split="dev",
+        repeats=1,
+        use_judge=False,
+    )
+
+    assert summary_unverified["all_human_verified"] is False
+    assert summary_unverified["answerable_count"] == 26
+    assert summary_unverified["human_verified_answerable_count"] == 20
+    assert summary_unverified["unanswerable_count"] == 4
+    expected_unverified_str = "20/26 answer keys human-verified (4 refusal/adversarial questions have no key)"
+    assert summary_unverified["human_verified_summary"] == expected_unverified_str
+
+    md_unverified = format_markdown_report(summary_unverified)
+    assert "PRELIMINARY RESULTS" in md_unverified
+    assert expected_unverified_str in md_unverified
+
+    # Case 3: Direct format_markdown_report call with raw summary questions dict (e.g. from JSON)
+    raw_summary = {
+        "label": "raw-test",
+        "timestamp": "20261013T120000Z",
+        "num_questions": 3,
+        "questions": [
+            {"id": "q1", "answerable": True, "human_verified": True},
+            {"id": "q2", "answerable": True, "human_verified": False},
+            {"id": "q3", "answerable": False, "human_verified": False},
+        ],
+    }
+    md_raw = format_markdown_report(raw_summary)
+    assert "PRELIMINARY RESULTS" in md_raw
+    assert "1/2 answer keys human-verified (1 refusal/adversarial questions have no key)" in md_raw
+
 

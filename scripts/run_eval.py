@@ -99,6 +99,11 @@ def parse_args() -> argparse.Namespace:
         help="Override retrieval.neighbor_top_n for this evaluation run.",
     )
     parser.add_argument(
+        "--preserve-timestamp",
+        action="store_true",
+        help="Preserve source run timestamp and overwrite output metrics/md files when rescoring.",
+    )
+    parser.add_argument(
         "--max-context-chunks",
         type=int,
         default=None,
@@ -394,6 +399,7 @@ def run_cli(args: argparse.Namespace) -> int:
             source_run_label=args.rescore,
             label=target_label,
             store=store,
+            preserve_timestamp=args.preserve_timestamp,
         )
     else:
         if args.split == "test":

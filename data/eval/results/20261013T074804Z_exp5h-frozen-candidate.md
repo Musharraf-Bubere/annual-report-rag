@@ -7,9 +7,6 @@
 - **Questions evaluated**: `30`
 - **Skipped draft questions**: `0` (excluded by default because status='draft_needs_fill' (missing expected answers and/or PDF pages))
 
-> [!WARNING]
-> **PRELIMINARY RESULTS**: one or more questions have `human_verified=false`. Treat these metrics as directional engineering signals rather than statistically final benchmarks.
-
 ## 1. Retrieval Metrics (Answerable Questions)
 
 | Metric | Value |
