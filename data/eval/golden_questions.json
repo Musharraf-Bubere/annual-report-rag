@@ -84,7 +84,7 @@
       "110"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). Total FY2026 dividend Rs 110/share (11,000% of paid-up value); final Rs 31 recommended.",
+    "notes": "Verified visually on PDF p8. Total FY2026 dividend Rs 110/share (11,000% of paid-up value); final Rs 31 recommended.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -138,7 +138,7 @@
       "19.8|19.78"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). 19.8% is excluding exceptional items (MD&A table). Reported margin is lower.",
+    "notes": "Verified visually on PDF p8. 19.8% is excluding exceptional items (MD&A table). Reported margin is lower.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -161,7 +161,7 @@
       "583"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). 583 = 31 Mar 2026; 1,073 = 31 Mar 2025 (prior year), so only 583 is required.",
+    "notes": "Verified visually on PDF p224. 583 = 31 Mar 2026; 1,073 = 31 Mar 2025 (prior year), so only 583 is required.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -354,7 +354,7 @@
       "8.8"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). 8.8% growth is on the excluding-exceptional-items basis (52,820 vs 48,553).",
+    "notes": "Verified visually on PDF p58. 8.8% growth is on the excluding-exceptional-items basis (52,820 vs 48,553).",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -377,7 +377,7 @@
       "2.4"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). Report says revenue DECLINED by 2.4% in constant currency; 2.4 matches with or without a minus sign.",
+    "notes": "Verified visually on PDF p24. Report says revenue DECLINED by 2.4% in constant currency; 2.4 matches with or without a minus sign.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -423,7 +423,7 @@
       "6,17,437|617,437"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). Total employees (permanent + other than permanent) 6,17,437, BRSR table (printed page 138 = PDF page 108).",
+    "notes": "Verified visually on PDF p108. Total employees (permanent + other than permanent) 6,17,437, BRSR table (printed page 138 = PDF page 108).",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -546,7 +546,7 @@
   },
   {
     "id": "q22",
-    "question": "What was TCS's operating income in fiscal 2026?",
+    "question": "What was TCS's operating income in rupees for fiscal 2026?",
     "type": "fact",
     "answerable": true,
     "expected_sources": [
@@ -556,13 +556,21 @@
       {
         "source": "tcs-ar-26",
         "page": 24
+      },
+      {
+        "source": "tcs-ar-26",
+        "page": 8
+      },
+      {
+        "source": "tcs-ar-26",
+        "page": 58
       }
     ],
     "must_contain": [
       "66,838"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). EBIT before other income = 66,838 (25.0% margin).",
+    "notes": "Verified visually: TCS operating income (EBIT before other income) Rs 66,838 crore, 25.0% margin, on PDF p58 (Financial Performance Overview table), p24 (Operating Profit Trend chart) and p8 (Chairman's letter: 'Operating Income was Rs 66,838 crore'). The report also gives a USD convenience figure on p5; the question asks for rupees.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -628,7 +636,7 @@
       },
       {
         "source": "infosys-ar-26",
-        "page": 18
+        "page": 26
       },
       {
         "source": "infosys-ar-26",
@@ -666,7 +674,7 @@
       "13.7"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). 13.7%, IT services, voluntary. Overall turnover elsewhere in the report differs.",
+    "notes": "Verified visually: PDF p25: voluntary LTM attrition in IT services 13.7%.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -674,16 +682,16 @@
   {
     "id": "q27",
     "question": "What is Infosys's employee attrition rate?",
-    "type": "unanswerable",
-    "answerable": false,
+    "type": "fact",
+    "answerable": true,
     "expected_sources": [
       "infosys-ar-26"
     ],
-    "expected_pages": [],
-    "must_contain": [],
+    "expected_pages": [{ "source": "infosys-ar-26", "page": 144 }],
+    "must_contain": ["12.6"],
     "must_not_contain": [],
-    "notes": "Searched Infosys PDF for 'attrition', 'turnover rate', 'voluntary', 'left the organisation': no attrition percentage found. Verified by user.",
-    "human_verified": false,
+    "notes": "Verified visually on PDF p144 (printed p175), BRSR item 22, turnover rate for permanent employees: FY2026 total 12.6% (male 13.2, female 11.6). Footnote: voluntary attrition for IT services excluding BPM, products and platforms.",
+    "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
   },
@@ -705,7 +713,7 @@
       "35.2"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). BRSR table: permanent 35.2% women; total incl. non-permanent 35.3% (printed page 138 = PDF page 108).",
+    "notes": "Verified visually: PDF p108 (BRSR workforce table): permanent employees 5,84,519, women 35.2%; total incl. non-permanent 6,17,437.",
     "human_verified": true,
     "split": "test",
     "status": "ready_unverified"
@@ -728,7 +736,7 @@
       "39.5"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). Highlights page: '39.5% Women in the workforce'. PDF page needs a lookup. Page inferred (same highlights page as q08's 443); confirm in viewer.",
+    "notes": "Verified visually: Infosys PDF p25, highlights: 39.5% women in the workforce.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -751,7 +759,7 @@
       "145.99"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). 145.99 is excluding exceptional items. Reported basic/diluted EPS = 136.01 (consolidated).",
+    "notes": "Verified visually: PDF p24 EPS chart FY2026 145.99; p58 table. 145.99 is excluding exceptional items; reported basic/diluted EPS is 136.01.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -806,7 +814,7 @@
       "48.6"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). MD&A revenue by geography: North America 48.6%. PDF page needs a lookup.",
+    "notes": "Verified visually: PDF p59, revenue by geography: North America 48.6%.",
     "human_verified": true,
     "split": "test",
     "status": "ready_unverified"
@@ -857,7 +865,7 @@
       "B S R|BSR"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). B S R & Co. LLP (term to 2027 AGM). Walker Chandiok & Co LLP is only RECOMMENDED for the next term; a good answer may mention it. Note spaced letters in the extracted text. Pages inferred from text order (Board's Report; Information at a glance); confirm in viewer.",
+    "notes": "Verified visually on PDF p40. B S R & Co. LLP (term to 2027 AGM). Walker Chandiok & Co LLP is only RECOMMENDED for the next term; a good answer may mention it. Note spaced letters in the extracted text.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -884,7 +892,7 @@
       "Deloitte"
     ],
     "must_not_contain": [],
-    "notes": "Checked against extracted PDF text only (not visually). Deloitte Haskins & Sells LLP (term to 2027 AGM). BSR & Co. LLP is only PROPOSED for the next term. Pages inferred from text order; confirm in viewer.",
+    "notes": "Verified visually on PDF p43. Deloitte Haskins & Sells LLP (term to 2027 AGM). BSR & Co. LLP is only PROPOSED for the next term.",
     "human_verified": true,
     "split": "dev",
     "status": "ready_unverified"
@@ -913,11 +921,12 @@
       }
     ],
     "must_contain": [
-      "584,519|5,84,519",
-      "3,28,594|328,594"
+    "584,519|5,84,519|617,437|6,17,437",
+    "3,28,594|328,594",
+    "255,925|2,55,925|288,843|2,88,843"
     ],
     "must_not_contain": [],
-    "notes": "TCS permanent 584,519 vs Infosys 328,594 -> difference 255,925. Using TCS total 617,437 gives 288,843. A good answer states which TCS figure it uses. Pages: reuse q01/q23 after lookup.",
+    "notes": "TCS permanent 584,519 vs Infosys 328,594 -> difference 255,925. Using TCS total 617,437 gives 288,843. A good answer states which TCS figure it uses. Pages verified via q01/q23/q28 (TCS p25/p108, Infosys p10)",
     "human_verified": true,
     "split": "test",
     "status": "ready_unverified"
