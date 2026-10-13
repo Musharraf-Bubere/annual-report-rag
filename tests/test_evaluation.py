@@ -289,8 +289,8 @@ def test_golden_set_validator_and_seed_file(tmp_path: Path) -> None:
     assert len(seeds) == 40
     assert sum(1 for q in seeds if q.split == "dev") == 30
     assert sum(1 for q in seeds if q.split == "test") == 10
-    assert sum(1 for q in seeds if q.status == "ready_unverified") == 39
-    assert sum(1 for q in seeds if q.status == "draft_needs_fill") == 1
+    assert sum(1 for q in seeds if q.status == "ready_unverified") == 40
+    assert sum(1 for q in seeds if q.status == "draft_needs_fill") == 0
     assert sum(1 for q in seeds if q.human_verified) >= 12
 
     # Verify loader accepts the neutral draft schema directly

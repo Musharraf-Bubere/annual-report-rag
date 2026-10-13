@@ -86,6 +86,9 @@ def compute_settings_hash(settings: Settings) -> str:
             ret_dict.pop("neighbor_top_n", None)
         if ret_dict.get("max_context_chunks") is None:
             ret_dict.pop("max_context_chunks", None)
+        hybrid_dict = ret_dict.get("hybrid")
+        if isinstance(hybrid_dict, dict) and not hybrid_dict.get("enabled"):
+            ret_dict.pop("hybrid", None)
     prompt_dict = raw.get("prompt")
     if isinstance(prompt_dict, dict) and not prompt_dict.get("rules_v2"):
         raw.pop("prompt", None)

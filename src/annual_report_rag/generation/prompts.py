@@ -18,7 +18,7 @@ SYSTEM_PROMPT = f"""You are a financial analyst assistant answering questions fr
 
 RULES_V2_ADDENDUM = """
 8. Accounting synonyms: treat "operating income" = "operating profit" = "EBIT", and similar standard equivalents, as the same measure; state the term the report uses.
-9. Basis: unless the question says "standalone", answer with the consolidated figure and name the basis; if both bases are in the context, never mix them in one answer."""
+9. Basis: Unless the question says standalone, prefer the consolidated figure. Name the basis (consolidated or standalone) only if the context states it; if it does not, say the basis is not stated."""
 
 SYSTEM_PROMPT_V2 = f"{SYSTEM_PROMPT}{RULES_V2_ADDENDUM}"
 

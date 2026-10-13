@@ -107,6 +107,23 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable prompt.rules_v2 for this evaluation run.",
     )
+    parser.add_argument(
+        "--hybrid",
+        action="store_true",
+        help="Enable retrieval.hybrid.enabled (BM25 + dense RRF) for this evaluation run.",
+    )
+    parser.add_argument(
+        "--bm25-top-k",
+        type=int,
+        default=None,
+        help="Override retrieval.hybrid.bm25_top_k for this evaluation run.",
+    )
+    parser.add_argument(
+        "--fusion-weight",
+        type=float,
+        default=None,
+        help="Override retrieval.hybrid.fusion_weight for this evaluation run.",
+    )
     return parser.parse_args()
 
 
@@ -139,6 +156,25 @@ def run_cli(args: argparse.Namespace) -> int:
             ),
         )
         settings = replace(settings, retrieval=new_ret)
+    if args.hybrid or args.bm25_top_k is not None or args.fusion_weight is not None:
+        new_hybrid = replace(
+            settings.retrieval.hybrid,
+            enabled=True if args.hybrid else settings.retrieval.hybrid.enabled,
+            bm25_top_k=(
+                args.bm25_top_k
+                if args.bm25_top_k is not None
+                else settings.retrieval.hybrid.bm25_top_k
+            ),
+            fusion_weight=(
+                args.fusion_weight
+                if args.fusion_weight is not None
+                else settings.retrieval.hybrid.fusion_weight
+            ),
+        )
+        settings = replace(
+            settings,
+            retrieval=replace(settings.retrieval, hybrid=new_hybrid),
+        )
     if args.rules_v2:
         settings = replace(
             settings,

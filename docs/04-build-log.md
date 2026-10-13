@@ -756,4 +756,38 @@ Applied the conflict-free glyph repair and clean-page vocabulary safety rules to
     - **`q30` [IMPROVED, `3/3` repeats]**: `[FALSE_REFUSAL, FALSE_REFUSAL, FALSE_REFUSAL]` $\to$ `[CORRECT, CORRECT, CORRECT]` (`₹145.99` EPS cited from `[6]`).
     - **`q05` [REGRESSED, `3/3` repeats]**: `[CORRECT, CORRECT, CORRECT]` $\to$ `[FALSE_REFUSAL, FALSE_REFUSAL, FALSE_REFUSAL]` (model followed Rule 3's no-unrequested-calculation constraint rather than dividing `52,820 / 2,67,021`, reducing `questions_with_unsupported_numbers` from `1` to `0`).
 
+---
 
+## Phase 5g — Faithfulness Fix (`exp5g-rule2`), Read-Only Diagnostics, and In-House BM25 + RRF Hybrid Retrieval (`exp5g-hybrid`)
+
+### 1. Step 0: Offline Rescores Against Committed `golden_questions.json` (`636e644`)
+- Ran `scripts/run_eval.py --rescore` on `baseline-v3` (`20261013T012525Z_baseline-v3`), `exp5e-r3` (`20261013T012539Z_exp5e-r3`), and `exp5f-prompt` (`20261013T012550Z_exp5f-prompt`):
+  - **`baseline-v3` (`29` cached questions)**: `19 CORRECT, 1 WRONG (q03), 5 FALSE_REFUSAL (q05, q14, q22, q26, q30), 4 CORRECT_REFUSAL`, `accuracy = 0.7931`.
+  - **`exp5e-r3` (`29` cached questions, 3 repeats)**: `21 CORRECT, 1 WRONG (q14), 3 FALSE_REFUSAL (q22, q26, q30), 4 CORRECT_REFUSAL`, `flip_rate = 0.0000`, `accuracy = 0.8621`.
+  - **`exp5f-prompt` (`29` cached questions, 3 repeats)**: `23 CORRECT, 0 WRONG, 2 FALSE_REFUSAL (q05, q26), 4 CORRECT_REFUSAL`, `flip_rate = 0.0000`, `accuracy = 0.9310`.
+  - Note: Commit `636e644` also promoted `q27` (*"What is Infosys's employee attrition rate?"*, `split="dev"`, `type="unanswerable"`, `answerable=false`) from `draft_needs_fill` to `ready_unverified`, so new live runs (`exp5g-rule2`, `exp5g-hybrid`) evaluate `30` dev questions (`25` answerable, `5` unanswerable).
+
+### 2. Step 1: Read-Only Diagnostics
+- **Step 1(a) — `q05` under `rules_v2=false` (`exp5f-n6`) vs. `rules_v2=true` (`exp5f-prompt`)**:
+  - Verified that the retrieved context chunks (`[1]`–`[10]`: `tcs-ar-26-p24-c5, p24-c2, p24-c1, p36-c1, p24-c3, p4-c0, p24-c4, p24-c0, p36-c0, p36-c2`) and user prompt are **100% byte-identical** (`identical_chunks = True`, `user_v1 == user_v2` is `True`). Neither page 8 (`p8-c7`) nor page 58 (`p58-c0`), which state `"19.8%"`, is in the context.
+  - Under `rules_v2=false`, the model calculated `52,820 / 2,67,021 * 100 = 19.78%` from `[4] tcs-ar-26-p36-c1` (`unsupported_numbers=['19.78']`). Under `rules_v2=true`, adding Rules 8 (`"state the term the report uses"`) and 9 (`"answer with the consolidated figure and name the basis"`) reinforced Rule 3 (`"Do not calculate unless the user asks"`), causing the model to refuse (`"I could not find this in the provided reports."`) because no net profit margin percentage is stated in `[1]`–`[10]`.
+- **Step 1(b) — Claim that a `"PDF header filter"` strips `"FY 2026"` from the Net Margin chart on TCS PDF page 24**:
+  - **Verified that this does NOT happen.** There is no `"PDF header filter"` anywhere in the codebase (`loader.py`, `quality.py`, `glyph_repair.py`, `chunker.py`); TCS PDF page 24 does not have a `"Net Margin"` chart (its 6 charts are `Revenue Trend`, `Operating Profit Trend`, `Earnings per share`, `Operating Cash Flow and Cash Conversion`, `Shareholder Payouts`, and `Return on Equity (%)`); `"FY 2026"` is preserved across every stage and stored in `tcs-ar-26-p24-c1..c5`; and `"Net Margin of 19.8%"` is actually on PDF page 8 (`tcs-ar-26-p8-c7`) and PDF page 58 (`tcs-ar-26-p58-c0`).
+- **Step 1(c) — Stored chunk(s) containing `"excluded from reported numbers"` on TCS page 58**:
+  - Found in **`tcs-ar-26-p58-c5`** (`"...The following exceptional items have been considered as one-offs and excluded from reported numbers: Pursuant to the Government of India notifying the four Labour Codes..."`).
+  - Verified that `tcs-ar-26-p58-c5` does **not** (`False`) appear in either `q30`'s context or `q04`'s context.
+
+### 3. Step 2: Rule 2 Faithfulness Update (`exp5g-rule2`, `--repeats 3 --judge`)
+- Updated Rule 9 in `src/annual_report_rag/generation/prompts.py` (`RULES_V2_ADDENDUM`) to: `"Unless the question says standalone, prefer the consolidated figure. Name the basis (consolidated or standalone) only if the context states it; if it does not, say the basis is not stated."`
+- **`exp5g-rule2` (`20261013T020701Z_exp5g-rule2`, `30` dev questions, 3 repeats)**:
+  - **Outcomes (`30` questions)**: `22 CORRECT, 0 WRONG, 3 FALSE_REFUSAL (q05, q26, q30), 4 CORRECT_REFUSAL, 1 ANSWERED_ANYWAY (q27)`, `flip_rate = 0.0000`, `accuracy = 0.8667` (`22/25 = 0.8800` answerable).
+  - On the 29 questions shared with `exp5f-prompt`: `22 CORRECT` vs. `23 CORRECT` (`-1` on `q30`, which shifted from `CORRECT` to `FALSE_REFUSAL` across `3/3` repeats because `[6] tcs-ar-26-p24-c3` does not state `"excluding exceptional items"`).
+  - **`q27` (`unanswerable`)**: Scored `ANSWERED_ANYWAY` (`3/3` repeats) because `[9] infosys-ar-26-p161-c1` (Infosys BRSR p161) contains the employee turnover / voluntary attrition table (`12.6%` in FY 2026, `14.1%` in FY 2025, `12.6%` in FY 2024; `judge_faithful=True`).
+  - **Faithfulness**: `faithfulness_rate = 0.8261` (`19/23`), as the LLM judge flagged `"The basis is not stated [n]"` on `q01, q09, q17, q33` as an unsupported claim.
+
+### 4. Step 3: In-House BM25 + RRF Hybrid Retrieval (`exp5g-hybrid-retrieval` & `exp5g-hybrid`)
+- Implemented `src/annual_report_rag/retrieval/bm25.py` (`tokenize_bm25`, `BM25Document`, `BM25Hit`, `BM25Index`), `HybridConfig` in `config.py` / `settings.yaml` (`enabled=false, bm25_top_k=20, rrf_k=60, fusion_weight=0.5`), `ChromaStore.query_bm25()` built at startup from Chroma documents, and `reciprocal_rank_fusion()` (`rrf_k=60`) in `retriever.py`.
+- **`exp5g-hybrid-retrieval` (`20261013T021528Z_exp5g-hybrid-retrieval`) & `exp5g-hybrid` (`20261013T022400Z_exp5g-hybrid`)**:
+  - **Retrieval (`25` answerable)**: `page_hit@1 = 0.4400 (-0.0400)`, `page_hit@3 = 0.7600 (-0.0400)`, **`page_hit@6 = 0.9600 (+0.1200, 24/25)`**, **`MRR = 0.6460 (+0.0047)`**, **`text_hit_all@6 = 1.0000 (+0.1200, 25/25)`**, **`text_hit_all@context = 1.0000 (+0.0800, 25/25)`**.
+  - **Generation Outcomes (`30` questions)**: **`24 CORRECT (+2 vs. Step 2, 24/25 = 96.0% answerable)`, `1 WRONG (+1, q22)`, `0 FALSE_REFUSAL (-3: q05, q26, q30 all become CORRECT)`, `4 CORRECT_REFUSAL`, `1 ANSWERED_ANYWAY (q27)`**, `flip_rate = 0.0000`.
+  - **Faithfulness & Citations**: **`faithfulness_rate = 0.9231 (24/26, +0.0970 vs. Step 2)`** with **`q30` `judge_faithful = True`** (`"For fiscal 2026, the consolidated earnings per share was ₹145.99 [6]."` citing `[6] tcs-ar-26-p58-c0`), and **`citation_precision = 1.0000 (44/44)`**.

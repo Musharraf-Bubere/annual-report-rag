@@ -121,6 +121,55 @@ def _apply_page_cap(
     return kept
 
 
+def reciprocal_rank_fusion(
+    dense_hits: list[QueryResult],
+    bm25_hits: list[QueryResult],
+    top_k: int,
+    rrf_k: int = 60,
+    fusion_weight: float = 0.5,
+) -> list[QueryResult]:
+    """Fuses dense and BM25 rankings using weighted Reciprocal Rank Fusion (RRF, k=rrf_k)."""
+    w_bm25 = max(0.0, min(1.0, float(fusion_weight)))
+    w_dense = 1.0 - w_bm25
+    k_val = max(1, int(rrf_k))
+
+    dense_rank = {h.chunk_id: rank for rank, h in enumerate(dense_hits, 1)}
+    bm25_rank = {h.chunk_id: rank for rank, h in enumerate(bm25_hits, 1)}
+
+    by_id: dict[str, QueryResult] = {}
+    for h in dense_hits:
+        by_id[h.chunk_id] = h
+    for h in bm25_hits:
+        if h.chunk_id not in by_id:
+            by_id[h.chunk_id] = h
+
+    scored: list[tuple[float, float, QueryResult]] = []
+    for cid, hit in by_id.items():
+        r_d = dense_rank.get(cid)
+        r_b = bm25_rank.get(cid)
+        s_d = w_dense * (1.0 / (k_val + r_d)) if r_d is not None else 0.0
+        s_b = w_bm25 * (1.0 / (k_val + r_b)) if r_b is not None else 0.0
+        rrf_score = s_d + s_b
+        dense_tie = hit.score if r_d is not None else 0.0
+        scored.append((rrf_score, dense_tie, hit))
+
+    scored.sort(key=lambda item: (-item[0], -item[1], item[2].chunk_id))
+    out: list[QueryResult] = []
+    for rrf_score, _dense_tie, hit in scored[:top_k]:
+        out.append(
+            QueryResult(
+                chunk_id=hit.chunk_id,
+                text=hit.text,
+                source=hit.source,
+                page=hit.page,
+                score=round(rrf_score, 6),
+                extraction_method=hit.extraction_method,
+                text_quality=hit.text_quality,
+            )
+        )
+    return out
+
+
 def _query_by_sources(
     store: ChromaStore,
     query_vector: list[float],
@@ -155,6 +204,55 @@ def _query_by_sources(
     return combined_hits
 
 
+def _query_hybrid_by_sources(
+    store: ChromaStore,
+    query_vector: list[float],
+    question_text: str,
+    top_k: int,
+    target_sources: list[str],
+    bm25_top_k: int = 20,
+    rrf_k: int = 60,
+    fusion_weight: float = 0.5,
+    min_score: float = 0.0,
+    max_chunks_per_page: int | None = None,
+) -> list[QueryResult]:
+    """Queries dense and BM25 indexes globally, for a single source, or per-source and fuses rankings with RRF."""
+    use_cap = max_chunks_per_page is not None and max_chunks_per_page > 0
+    cand_k = max(top_k * 4 if use_cap else top_k, int(bm25_top_k))
+    fused_limit = 4 * top_k if use_cap else top_k
+
+    def _fuse_for_scope(scope_sources: list[str] | None) -> list[QueryResult]:
+        dense_hits = store.query(query_vector, top_k=cand_k, sources=scope_sources)
+        if min_score > 0.0:
+            dense_hits = [h for h in dense_hits if h.score >= min_score]
+        bm25_hits = store.query_bm25(
+            question_text, top_k=bm25_top_k, sources=scope_sources
+        )
+        fused = reciprocal_rank_fusion(
+            dense_hits=dense_hits,
+            bm25_hits=bm25_hits,
+            top_k=fused_limit,
+            rrf_k=rrf_k,
+            fusion_weight=fusion_weight,
+        )
+        if use_cap and max_chunks_per_page is not None:
+            return _apply_page_cap(fused, max_chunks_per_page, top_k)
+        return fused
+
+    if not target_sources:
+        return _fuse_for_scope(None)
+
+    if len(target_sources) == 1:
+        return _fuse_for_scope([target_sources[0]])
+
+    combined_hits: list[QueryResult] = []
+    for src in target_sources:
+        combined_hits.extend(_fuse_for_scope([src]))
+
+    combined_hits.sort(key=lambda h: (-h.score, h.chunk_id))
+    return combined_hits
+
+
 def retrieve(
     question: str,
     embedder: EmbeddingProvider,
@@ -163,7 +261,7 @@ def retrieve(
     top_k: int | None = None,
     sources: list[str] | None = None,
 ) -> list[RetrievedChunk]:
-    """Embeds a user question and retrieves top-k passages routed by company aliases, with optional neighbour expansion.
+    """Embeds a user question and retrieves top-k passages routed by company aliases, with optional hybrid BM25 RRF and neighbour expansion.
 
     Args:
         question: User's natural language question.
@@ -196,17 +294,30 @@ def retrieve(
     if not vectors:
         return []
 
-    raw_hits = _query_by_sources(
-        store=store,
-        query_vector=vectors[0],
-        top_k=effective_top_k,
-        target_sources=target_sources,
-        max_chunks_per_page=settings.retrieval.max_chunks_per_page,
-    )
-
-    min_score = settings.retrieval.min_score
-    if min_score > 0.0:
-        raw_hits = [hit for hit in raw_hits if hit.score >= min_score]
+    if settings.retrieval.hybrid.enabled:
+        raw_hits = _query_hybrid_by_sources(
+            store=store,
+            query_vector=vectors[0],
+            question_text=cleaned_question,
+            top_k=effective_top_k,
+            target_sources=target_sources,
+            bm25_top_k=settings.retrieval.hybrid.bm25_top_k,
+            rrf_k=settings.retrieval.hybrid.rrf_k,
+            fusion_weight=settings.retrieval.hybrid.fusion_weight,
+            min_score=settings.retrieval.min_score,
+            max_chunks_per_page=settings.retrieval.max_chunks_per_page,
+        )
+    else:
+        raw_hits = _query_by_sources(
+            store=store,
+            query_vector=vectors[0],
+            top_k=effective_top_k,
+            target_sources=target_sources,
+            max_chunks_per_page=settings.retrieval.max_chunks_per_page,
+        )
+        min_score = settings.retrieval.min_score
+        if min_score > 0.0:
+            raw_hits = [hit for hit in raw_hits if hit.score >= min_score]
 
     primary_chunks = [_to_retrieved_chunk(hit) for hit in raw_hits]
     return _expand_neighbors(

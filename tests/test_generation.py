@@ -82,7 +82,11 @@ def test_prompt_builder_and_system_prompt() -> None:
     sys_prompt_v2, _ = build_prompt("What was TCS revenue?", chunks, settings_v2)
     assert sys_prompt_v2 == SYSTEM_PROMPT_V2
     assert '8. Accounting synonyms: treat "operating income" = "operating profit" = "EBIT"' in sys_prompt_v2
-    assert '9. Basis: unless the question says "standalone", answer with the consolidated figure' in sys_prompt_v2
+    assert (
+        "9. Basis: Unless the question says standalone, prefer the consolidated figure. "
+        "Name the basis (consolidated or standalone) only if the context states it; "
+        "if it does not, say the basis is not stated."
+    ) in sys_prompt_v2
 
 
 def test_citation_parsing_and_resolution() -> None:

@@ -345,4 +345,51 @@ In Phase 5e (no re-index), we added `retrieval.neighbor_window` (default `0`) an
    - The `exp5f-n6` vs. `exp5e-r3` difference (`+0.33` questions / `+1.15%` mean accuracy from `q14` flipping on `1/3` repeats) is **within the single-question generation noise** of a 29-question set.
    - In `exp5f-prompt` vs. `exp5e-r3`, all 4 per-question shifts are **100% repeat-stable (`3/3` vs `0/3`, `flip_rate = 0.0000`)** and causally explained by the new rules (`q14`, `q22`, `q30` vs `q05`). However, in terms of dataset sampling granularity on $n = 29$ (`1` question $= 3.45\%$ accuracy, binomial SE $\approx 4.7\%–6.4\%$ or `~1.4–1.9` questions), a net `+2` question gain (`21 -> 23 CORRECT`, `+6.90%` overall / `+8.00%` answerable) is `~1.1–1.5` standard errors of the 29-question sample proportion, so while the per-question rule fixes are deterministic across repeats, the aggregate percentage delta is at the margin of 29-question sample noise.
 
+---
 
+## 12. Phase 5g: Step 0 Rescores, Rule 2 Faithfulness Update (`exp5g-rule2`), and In-House BM25 + RRF Hybrid Retrieval (`exp5g-hybrid`)
+
+### A. Step 0: Offline Rescores Against Committed `golden_questions.json` (`636e644`)
+
+| Run Label | Rescored File | `num_questions` | `CORRECT` | `WRONG` | `FALSE_REFUSAL` | `CORRECT_REFUSAL` | `accuracy` (mean) | `answerable_accuracy` | `flip_rate` |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`baseline-v3`** | `20261013T012525Z_baseline-v3` | `29` | `19` | `1` (`q03`) | `5` (`q05,q14,q22,q26,q30`) | `4` | `0.7931` | `0.7600` | `0.0000` |
+| **`exp5e-r3`** | `20261013T012539Z_exp5e-r3` | `29` | `21` | `1` (`q14`) | `3` (`q22,q26,q30`) | `4` | `0.8621` | `0.8400` | `0.0000` |
+| **`exp5f-prompt`** | `20261013T012550Z_exp5f-prompt` | `29` | `23` | `0` | `2` (`q05,q26`) | `4` | `0.9310` | `0.9200` | `0.0000` |
+
+*(Note: Commit `636e644` promoted `q27` (`"What is Infosys's employee attrition rate?"`, `split="dev"`, `type="unanswerable"`, `answerable=false`) from `draft_needs_fill` to `ready_unverified`, so new live runs in Phase 5g evaluate all `30` dev questions: `25` answerable and `5` unanswerable.)*
+
+### B. Step 2 & Step 3: Aggregate Comparison (`exp5f-prompt` vs. `exp5g-rule2` vs. `exp5g-hybrid`)
+
+| Metric | `exp5f-prompt` (`29` qs, Dense) | `exp5g-rule2` (`30` qs, Dense) | `exp5g-hybrid` (`30` qs, BM25+RRF) | Delta (`hybrid - rule2`) |
+| :--- | :---: | :---: | :---: | :---: |
+| `page_hit@1` / `@3` / `@6` | `0.4800` / `0.8000` / `0.8400` | `0.4800` / `0.8000` / `0.8400` | `0.4400` / `0.7600` / **`0.9600`** | `-0.0400` / `-0.0400` / **`+0.1200`** |
+| `MRR` | `0.6413` | `0.6413` | **`0.6460`** | **`+0.0047`** |
+| `text_hit_all@6` | `0.8800` (`22/25`) | `0.8800` (`22/25`) | **`1.0000` (`25/25`)** | **`+0.1200`** |
+| `text_hit_any@context` / `all@context` | `0.9200` / `0.9200` (`23/25`) | `0.9200` / `0.9200` (`23/25`) | **`1.0000` / `1.0000` (`25/25`)** | **`+0.0800`** |
+| `mean_context_chunks` | `10.00` | `10.00` | `10.00` | `0.00` |
+| `CORRECT` (repeat 0) | `23` (`/25`) | `22` (`/25`) | **`24` (`/25`)** | **`+2`** |
+| `WRONG` (repeat 0) | `0` | `0` | `1` (`q22`) | `+1` |
+| `FALSE_REFUSAL` (repeat 0) | `2` (`q05, q26`) | `3` (`q05, q26, q30`) | **`0`** | **`-3`** |
+| `CORRECT_REFUSAL` (repeat 0) | `4` (`/4`) | `4` (`/5`) | `4` (`/5`) | `0` |
+| `ANSWERED_ANYWAY` (repeat 0) | `0` (`/4`) | `1` (`q27`) | `1` (`q27`) | `0` |
+| `accuracy` (overall) | `0.9310` (`27/29`) | `0.8667` (`26/30`) | **`0.9333` (`28/30`)** | **`+0.0666`** |
+| `answerable_accuracy` | `0.9200` (`23/25`) | `0.8800` (`22/25`) | **`0.9600` (`24/25`)** | **`+0.0800`** |
+| `flip_rate` | `0.0000` (`[]`) | `0.0000` (`[]`) | **`0.0000` (`[]`)** | `0.0000` |
+| `grounded_rate` (answerable) | `0.8800` | `0.8800` | **`1.0000`** | **`+0.1200`** |
+| `questions_with_unsupported_numbers` | `0` (`[]`) | `0` (`[]`) | **`0` (`[]`)** | `0` |
+| `faithfulness_rate` (LLM Judge) | `0.9545` (`21/22`) | `0.8261` (`19/23`) | **`0.9231` (`24/26`)** | **`+0.0970`** |
+| `citation_precision` (LLM Judge) | `1.0000` (`40/40`) | `0.9762` (`41/42`) | **`1.0000` (`44/44`)** | **`+0.0238`** |
+| `avg_input_tokens` | `3093.7` | `3104.0` | `3133.6` | `+29.6` |
+| `avg_cost_per_query_usd` | `$0.001014` | `$0.001035` | `$0.001049` | `+$0.000014` |
+| `retrieve_ms` p50 / `total_ms` p50 | `53.21` / `1462.58` | `51.77` / `1482.88` | `96.30` (`36.93` ret-only) / `1257.97` | `+44.53` / `-224.91` |
+
+### C. Per-Question Changes (`exp5g-hybrid` vs. `exp5g-rule2`) & Freeze Recommendation
+1. **Improvements in `exp5g-hybrid` vs. `exp5g-rule2` (`+3 CORRECT`, all repeat-stable)**:
+   - **`q05` (`FALSE_REFUSAL -> CORRECT`, `page_hit@6: False -> True`)**: BM25 + RRF retrieves `tcs-ar-26-p58-c0` at primary rank `[5]`, which explicitly states `"Profit after tax attributable to shareholders of the Company 52,820 | 19.8 (% of Revenue)"` on a consolidated basis (`judge_faithful = True`, `unsupported_numbers = []`).
+   - **`q26` (`FALSE_REFUSAL -> CORRECT`, `page_hit@6: False -> True`)**: BM25 + RRF retrieves `tcs-ar-26-p25-c0` at `[1]` and `tcs-ar-26-p55-c3` at `[2]`, both containing TCS's `"13.7%"` voluntary LTM attrition rate (`judge_faithful = True`).
+   - **`q30` (`FALSE_REFUSAL -> CORRECT`, `judge_faithful = True`)**: BM25 + RRF retrieves `tcs-ar-26-p58-c0` at primary rank `[6]` (`"overview of the consolidated financial results... Earnings per share (in ₹) 145.99"`), resolving both the `exp5g-rule2` refusal and the `exp5f-prompt` faithfulness failure on `q30`.
+2. **Regression in `exp5g-hybrid` vs. `exp5g-rule2` (`-1 CORRECT`)**:
+   - **`q22` (`CORRECT -> WRONG`)**: Because `tcs-ar-26-p5-c3` (USD highlights on PDF p5) uses the exact phrase `"Operating Income"` (`$7.5 billion`), BM25 promoted `p5-c3` to primary rank `[4]` alongside `[1] tcs-ar-26-p24-c2` (`"Operating Profit ... 66,838"`), and the generator answered `"$7.5 billion [4]"` instead of `"₹66,838 crore"`.
+3. **Step 4 Freeze Recommendation**:
+   - We recommend freezing **Step 3 (`exp5g-hybrid`: `neighbor_window=1, neighbor_top_n=6, max_context_chunks=10, rules_v2=true, hybrid.enabled=true, bm25_top_k=20, rrf_k=60, fusion_weight=0.5`)**. While the net `+2` `CORRECT` improvement (`22 -> 24`, `+6.67%` overall / `+8.00%` answerable) is ~1.2–1.5 standard errors of a 30-question sample proportion, the retrieval gain (`page_hit@6: 0.8400 -> 0.9600`, `text_hit_all@6: 0.8800 -> 1.0000`, `text_hit_all@context: 0.9200 -> 1.0000`, `FALSE_REFUSAL: 3 -> 0`) is deterministic and closes every remaining retrieval miss on the dev set.

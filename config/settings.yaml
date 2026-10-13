@@ -34,6 +34,11 @@ retrieval:
   neighbor_window: 0            # Same-page neighbour window (c-w..c+w) for top-N primary hits (0 = off)
   neighbor_top_n: 3             # Number of top primary hits to expand with same-page neighbours (default 3)
   max_context_chunks: null      # Optional cap on total context chunks after neighbour expansion (null = off)
+  hybrid:
+    enabled: false              # Enable BM25 + dense Reciprocal Rank Fusion (default false so old runs reproduce)
+    bm25_top_k: 20              # Number of top BM25 candidates to retrieve per source before RRF fusion
+    rrf_k: 60                   # Reciprocal Rank Fusion rank constant k (default 60)
+    fusion_weight: 0.5          # Weight of BM25 in weighted RRF (0.5 = equal weight with dense; 0.0 = dense only; 1.0 = BM25 only)
 
 # Prompt rules settings
 prompt:

@@ -75,8 +75,18 @@ class IngestionConfig:
 
 
 @dataclass(frozen=True)
+class HybridConfig:
+    """Holds hybrid BM25 + dense retrieval and Reciprocal Rank Fusion (RRF) parameters."""
+
+    enabled: bool = False
+    bm25_top_k: int = 20
+    rrf_k: int = 60
+    fusion_weight: float = 0.5
+
+
+@dataclass(frozen=True)
 class RetrievalConfig:
-    """Holds retrieval search parameters such as top-k results, score threshold, input limit, query prefix, per-page cap, and neighbour expansion."""
+    """Holds retrieval search parameters such as top-k results, score threshold, input limit, query prefix, per-page cap, neighbour expansion, and hybrid BM25 fusion."""
 
     top_k: int = 6
     min_score: float = 0.0
@@ -86,6 +96,7 @@ class RetrievalConfig:
     neighbor_window: int = 0
     neighbor_top_n: int = 3
     max_context_chunks: int | None = None
+    hybrid: HybridConfig = HybridConfig()
 
 
 @dataclass(frozen=True)
@@ -228,6 +239,19 @@ def parse_ingestion_config(data: dict[str, Any]) -> IngestionConfig:
     )
 
 
+def parse_hybrid_config(data: Any) -> HybridConfig:
+    """Parses hybrid BM25 + dense retrieval parameters into a typed HybridConfig instance."""
+    if not isinstance(data, dict):
+        return HybridConfig()
+    raw_weight = data.get("fusion_weight", data.get("bm25_weight", 0.5))
+    return HybridConfig(
+        enabled=bool(data.get("enabled", False)),
+        bm25_top_k=int(data.get("bm25_top_k", 20)),
+        rrf_k=int(data.get("rrf_k", 60)),
+        fusion_weight=float(raw_weight) if raw_weight is not None else 0.5,
+    )
+
+
 def parse_retrieval_config(data: dict[str, Any]) -> RetrievalConfig:
     """Parses retrieval parameters into a typed RetrievalConfig instance."""
     raw_prefix = data.get("query_prefix")
@@ -242,6 +266,7 @@ def parse_retrieval_config(data: dict[str, Any]) -> RetrievalConfig:
     neighbor_top_n = int(raw_neighbor_top_n) if raw_neighbor_top_n is not None else 3
     raw_max_ctx = data.get("max_context_chunks")
     max_context_chunks = int(raw_max_ctx) if raw_max_ctx is not None else None
+    hybrid = parse_hybrid_config(data.get("hybrid"))
     return RetrievalConfig(
         top_k=int(data.get("top_k", 6)),
         min_score=float(data.get("min_score", 0.0)),
@@ -251,6 +276,7 @@ def parse_retrieval_config(data: dict[str, Any]) -> RetrievalConfig:
         neighbor_window=neighbor_window,
         neighbor_top_n=neighbor_top_n,
         max_context_chunks=max_context_chunks,
+        hybrid=hybrid,
     )
 
 

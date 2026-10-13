@@ -432,3 +432,103 @@ def test_retriever_neighbor_expansion_and_citations(tmp_path: Path) -> None:
     ]
 
 
+def test_bm25_tokenizer_and_hybrid_rrf_retrieval(tmp_path: Path) -> None:
+    """Verifies Phase 5g BM25 tokenizer (numbers + ₹), startup ChromaStore BM25 index, RRF fusion, and hybrid retrieval."""
+    from dataclasses import replace
+
+    from annual_report_rag.config import HybridConfig
+    from annual_report_rag.retrieval.bm25 import tokenize_bm25
+    from annual_report_rag.retrieval.retriever import reciprocal_rank_fusion
+    from annual_report_rag.retrieval.store import QueryResult
+
+    # 1. Tokenizer preserves 13.7, 52,820, 1,78,650 and the ₹ symbol as tokens
+    tokens = tokenize_bm25(
+        "Voluntary LTM attrition was 13.7%, profit ₹52,820 crore and revenue ₹ 1,78,650 crore."
+    )
+    assert "13.7" in tokens
+    assert "52,820" in tokens
+    assert "1,78,650" in tokens
+    assert tokens.count("₹") == 2
+
+    # 2. Startup BM25 index built from Chroma documents
+    db_path = str(tmp_path / "hybrid_chroma")
+    store = ChromaStore(persist_path=db_path, collection_name="hybrid_col")
+    embedder = FakeProvider(embedding_dim=4)
+    base_settings = _build_test_settings(min_score=0.0, top_k=2)
+
+    q_text = "What was TCS voluntary LTM attrition rate 13.7 in IT services?"
+    q_vec = embedder.embed([q_text], purpose="query")[0]
+    v_high = list(q_vec)
+    v_med = [q_vec[0] * 0.95, q_vec[1], q_vec[2], q_vec[3]]
+    v_low = [-q_vec[0] * 0.2, q_vec[1] * 0.1, q_vec[2] * 0.1, q_vec[3] * 0.1]
+
+    chunks = [
+        Chunk(
+            id="tcs-p24-c0",
+            text="Financial capital overview and cash conversion highlights.",
+            source="tcs-ar-26",
+            page=24,
+            chunk_index=0,
+        ),
+        Chunk(
+            id="tcs-p4-c0",
+            text="About the report and reporting boundary for fiscal 2026.",
+            source="tcs-ar-26",
+            page=4,
+            chunk_index=0,
+        ),
+        Chunk(
+            id="tcs-p25-c0",
+            text="Voluntary LTM attrition rate in IT services was 13.7% in FY 2026 with ₹52,820 crore profit.",
+            source="tcs-ar-26",
+            page=25,
+            chunk_index=0,
+        ),
+    ]
+    store.add_chunks(chunks, [v_high, v_med, v_low])
+
+    # Re-open ChromaStore from disk to verify BM25 index is built at startup from Chroma documents
+    reopened_store = ChromaStore(persist_path=db_path, collection_name="hybrid_col")
+    assert len(reopened_store.bm25_index) == 3
+    bm25_hits = reopened_store.query_bm25(q_text, top_k=2, sources=["tcs-ar-26"])
+    assert len(bm25_hits) >= 1
+    assert bm25_hits[0].chunk_id == "tcs-p25-c0"
+
+    # 3. With hybrid.enabled=False (default), dense ranking returns p24-c0 and p4-c0 (p25-c0 had v_low)
+    dense_only = retrieve(q_text, embedder, reopened_store, base_settings)
+    assert [c.chunk_id for c in dense_only] == ["tcs-p24-c0", "tcs-p4-c0"]
+
+    # 4. With hybrid.enabled=True, RRF fuses dense + BM25 and promotes tcs-p25-c0 into top_k=2
+    hybrid_settings = replace(
+        base_settings,
+        retrieval=replace(
+            base_settings.retrieval,
+            hybrid=HybridConfig(
+                enabled=True,
+                bm25_top_k=10,
+                rrf_k=60,
+                fusion_weight=0.5,
+            ),
+        ),
+    )
+    hybrid_res = retrieve(q_text, embedder, reopened_store, hybrid_settings)
+    assert "tcs-p25-c0" in [c.chunk_id for c in hybrid_res]
+
+    # 5. Direct RRF fusion weight check (0.0 = dense only, 1.0 = BM25 only)
+    d_list = [
+        QueryResult(text="A", source="tcs-ar-26", page=1, score=0.9, chunk_id="cA"),
+        QueryResult(text="B", source="tcs-ar-26", page=2, score=0.8, chunk_id="cB"),
+    ]
+    b_list = [
+        QueryResult(text="B", source="tcs-ar-26", page=2, score=12.0, chunk_id="cB"),
+        QueryResult(text="C", source="tcs-ar-26", page=3, score=8.0, chunk_id="cC"),
+    ]
+    fused_equal = reciprocal_rank_fusion(d_list, b_list, top_k=3, rrf_k=60, fusion_weight=0.5)
+    assert fused_equal[0].chunk_id == "cB"  # cB appears in both rankings
+    fused_dense = reciprocal_rank_fusion(d_list, b_list, top_k=2, rrf_k=60, fusion_weight=0.0)
+    assert [h.chunk_id for h in fused_dense] == ["cA", "cB"]
+    fused_bm25 = reciprocal_rank_fusion(d_list, b_list, top_k=2, rrf_k=60, fusion_weight=1.0)
+    assert [h.chunk_id for h in fused_bm25] == ["cB", "cC"]
+
+
+

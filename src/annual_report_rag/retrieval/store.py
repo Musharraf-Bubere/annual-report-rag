@@ -9,6 +9,7 @@ import numpy as np
 from chromadb.errors import NotFoundError
 
 from annual_report_rag.ingestion.chunker import Chunk
+from annual_report_rag.retrieval.bm25 import BM25Document, BM25Index
 
 
 @dataclass(frozen=True)
@@ -36,13 +37,14 @@ class ChromaStore:
         embedding_dimension: int | None = None,
         reset_existing: bool = False,
     ) -> None:
-        """Initializes persistent Chroma client and ensures collection exists with cosine distance."""
+        """Initializes persistent Chroma client, ensures collection exists, and builds the in-memory BM25 index at startup."""
         self.persist_path = persist_path
         self.collection_name = collection_name
         self.embedding_provider = embedding_provider
         self.embedding_model = embedding_model
         self.embedding_dimension = embedding_dimension
         self.client = chromadb.PersistentClient(path=persist_path)
+        self._bm25_index: BM25Index = BM25Index([])
 
         if reset_existing:
             self.reset()
@@ -60,6 +62,38 @@ class ChromaStore:
                 metadata=metadata,
             )
             self._validate_metadata()
+            self._rebuild_bm25_index()
+
+    def _rebuild_bm25_index(self) -> None:
+        """Builds the in-memory BM25 index from all stored Chroma documents."""
+        if self.collection.count() == 0:
+            self._bm25_index = BM25Index([])
+            return
+        result = self.collection.get(include=["documents", "metadatas"])
+        ids = result.get("ids") or []
+        docs = result.get("documents") or []
+        metas = result.get("metadatas") or []
+        bm25_docs: list[BM25Document] = []
+        for cid, doc, meta in zip(ids, docs, metas, strict=False):
+            meta_dict = meta or {}
+            bm25_docs.append(
+                BM25Document(
+                    chunk_id=str(cid),
+                    text=str(doc),
+                    source=str(meta_dict.get("source", "")),
+                    page=int(meta_dict.get("page", 0)),
+                    extraction_method=str(
+                        meta_dict.get("extraction_method", "default")
+                    ),
+                    text_quality=str(meta_dict.get("text_quality", "clean")),
+                )
+            )
+        self._bm25_index = BM25Index(bm25_docs)
+
+    @property
+    def bm25_index(self) -> BM25Index:
+        """Returns the in-memory BM25Index built from stored Chroma documents."""
+        return self._bm25_index
 
     def _validate_metadata(self) -> None:
         """Validates that collection metadata matches current provider, model and dimension."""
@@ -115,6 +149,7 @@ class ChromaStore:
             name=self.collection_name,
             metadata=metadata,
         )
+        self._bm25_index = BM25Index([])
 
     def add_chunks(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         """Inserts text chunks and pre-computed vectors into the collection."""
@@ -146,6 +181,7 @@ class ChromaStore:
             documents=documents,
             metadatas=metadatas,
         )
+        self._rebuild_bm25_index()
 
     def existing_ids(self, ids: list[str]) -> set[str]:
         """Queries the collection to identify which given IDs already exist."""
@@ -271,3 +307,26 @@ class ChromaStore:
                 )
             )
         return query_results
+
+    def query_bm25(
+        self,
+        query_text: str,
+        top_k: int = 20,
+        sources: list[str] | None = None,
+    ) -> list[QueryResult]:
+        """Queries the startup in-memory BM25 index over stored chunks."""
+        if len(self._bm25_index) == 0 or top_k <= 0:
+            return []
+        hits = self._bm25_index.search(query_text, top_k=top_k, sources=sources)
+        return [
+            QueryResult(
+                chunk_id=h.chunk_id,
+                text=h.text,
+                source=h.source,
+                page=h.page,
+                score=h.score,
+                extraction_method=h.extraction_method,
+                text_quality=h.text_quality,
+            )
+            for h in hits
+        ]

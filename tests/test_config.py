@@ -51,6 +51,10 @@ def test_load_default_settings() -> None:
     assert settings.retrieval.neighbor_window == 0
     assert settings.retrieval.neighbor_top_n == 3
     assert settings.retrieval.max_context_chunks is None
+    assert settings.retrieval.hybrid.enabled is False
+    assert settings.retrieval.hybrid.bm25_top_k == 20
+    assert settings.retrieval.hybrid.rrf_k == 60
+    assert settings.retrieval.hybrid.fusion_weight == 0.5
     assert settings.prompt.rules_v2 is False
     assert settings.api.cors_origins == ("http://localhost:8501",)
     assert "tcs-ar-26" in settings.sources
@@ -108,6 +112,11 @@ retrieval:
   neighbor_window: 1
   neighbor_top_n: 6
   max_context_chunks: 10
+  hybrid:
+    enabled: true
+    bm25_top_k: 15
+    rrf_k: 50
+    fusion_weight: 0.6
 prompt:
   rules_v2: true
 storage:
@@ -144,6 +153,10 @@ quality:
     assert settings.retrieval.neighbor_window == 1
     assert settings.retrieval.neighbor_top_n == 6
     assert settings.retrieval.max_context_chunks == 10
+    assert settings.retrieval.hybrid.enabled is True
+    assert settings.retrieval.hybrid.bm25_top_k == 15
+    assert settings.retrieval.hybrid.rrf_k == 50
+    assert settings.retrieval.hybrid.fusion_weight == 0.6
     assert settings.prompt.rules_v2 is True
     assert settings.storage.collection_name == "temp_collection"
     assert settings.quality.single_letter_ratio_threshold == 0.20
