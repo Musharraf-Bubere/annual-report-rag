@@ -393,3 +393,58 @@ In Phase 5e (no re-index), we added `retrieval.neighbor_window` (default `0`) an
    - **`q22` (`CORRECT -> WRONG`)**: Because `tcs-ar-26-p5-c3` (USD highlights on PDF p5) uses the exact phrase `"Operating Income"` (`$7.5 billion`), BM25 promoted `p5-c3` to primary rank `[4]` alongside `[1] tcs-ar-26-p24-c2` (`"Operating Profit ... 66,838"`), and the generator answered `"$7.5 billion [4]"` instead of `"₹66,838 crore"`.
 3. **Step 4 Freeze Recommendation**:
    - We recommend freezing **Step 3 (`exp5g-hybrid`: `neighbor_window=1, neighbor_top_n=6, max_context_chunks=10, rules_v2=true, hybrid.enabled=true, bm25_top_k=20, rrf_k=60, fusion_weight=0.5`)**. While the net `+2` `CORRECT` improvement (`22 -> 24`, `+6.67%` overall / `+8.00%` answerable) is ~1.2–1.5 standard errors of a 30-question sample proportion, the retrieval gain (`page_hit@6: 0.8400 -> 0.9600`, `text_hit_all@6: 0.8800 -> 1.0000`, `text_hit_all@context: 0.9200 -> 1.0000`, `FALSE_REFUSAL: 3 -> 0`) is deterministic and closes every remaining retrieval miss on the dev set.
+
+---
+
+## 13. Phase 5h: Freeze Preparation Candidate Evaluation (`exp5h-frozen-candidate`) and Test Safeguards
+
+### A. Phase 5g Corrections & Context
+1. **`q27` Verification**: In Phase 5g, `q27` (*"What is Infosys's employee turnover rate?"*) was verified answerable on Infosys PDF page 144 (`12.6%` for FY 2026). The prior mention of "page 161" was an assistant transcription error; an exhaustive page-label audit verified 0 of 1,684 Infosys chunks and 0 of 30 sampled TCS chunks had any metadata mismatch. `q27` is answerable with `must_contain: ["12.6"]` on page 144.
+2. **Rule 9 Side Effect**: The Phase 5g Rule 9 wording (*"Name the basis only if the context states it; if it does not, say the basis is not stated"*) produced extraneous basis sentences (*"The basis is not stated [n]."*), which the LLM judge penalized on `q01, q09, q17, q33`. Rule 9 was updated in Phase 5h to:
+   *"Unless the question says standalone, prefer the consolidated figure. Mention the basis only if the context states it; if it does not, say nothing about the basis."*
+
+### B. Candidate Evaluation: `exp5h-frozen-candidate` vs. `exp5g-hybrid`
+*(Note: This comparison contains two simultaneous system changes—the Rule 9 silence fix and the re-index sync—along with user edits to `q22` ["in rupees"] and `q27` [promoted to answerable], so differences reflect the cumulative freeze candidate state rather than Rule 9 in isolation.)*
+
+| Metric | `exp5g-hybrid` (`30` qs, 25 ans / 5 unans) | `exp5h-frozen-candidate` (`30` qs, 26 ans / 4 unans) | Delta |
+| :--- | :---: | :---: | :---: |
+| `page_hit@1` / `@3` / `@6` | `0.4400` / `0.7600` / `0.9600` | `0.4615` / `0.7692` / `0.9615` | `+0.0215` / `+0.0092` / `+0.0015` |
+| `MRR` | `0.6460` | `0.6596` | `+0.0136` |
+| `text_hit_all@6` | `1.0000` (`25/25`) | `0.9615` (`25/26`)* | `-0.0385`* |
+| `text_hit_all@context` | **`1.0000` (`25/25`)** | **`1.0000` (`26/26`)** | **`0.0000` (`100%`)** |
+| `mean_context_chunks` | `10.00` | `10.00` | `0.00` |
+| `CORRECT` (repeat 0) | `24` (`/25` answerable) | **`26` (`/26` answerable, 100%)** | **`+2`** |
+| `WRONG` (repeat 0) | `1` (`q22`) | **`0`** | **`-1`** |
+| `FALSE_REFUSAL` (repeat 0) | `0` | **`0`** | `0` |
+| `CORRECT_REFUSAL` (repeat 0) | `4` (`/5` unanswerable) | **`4` (`/4` unanswerable, 100%)** | `0` |
+| `ANSWERED_ANYWAY` (repeat 0) | `1` (`q27`) | **`0`** | **`-1`** |
+| `accuracy` (repeat 0 / 3-rep mean) | `0.9333` / `0.9333` | **`1.0000` / `0.9778` (`0.9667–1.0000`)** | **`+0.0445`** |
+| `answerable_accuracy` (mean) | `0.9600` (`24/25`) | **`0.9744` (`0.9615–1.0000`)** | **`+0.0144`** |
+| `flip_rate` (3 repeats) | `0.0000` (`[]`) | `0.0333` (`['q35']`)* | `+0.0333` |
+| `grounded_rate` (answerable) | `1.0000` | `1.0000` | `0.0000` |
+| `questions_with_unsupported_numbers` | `0` (`[]`) | `0` (`[]`) | `0` |
+| `faithfulness_rate` (LLM Judge) | `0.9231` (`24/26`) | **`0.9615` (`25/26`)** | **`+0.0384`** |
+| `citation_precision` (LLM Judge) | `1.0000` (`44/44`) | `0.9592` (`47/49`) | `-0.0408` |
+| `avg_input_tokens` | `3133.6` | `3135.4` | `+1.8` |
+| `avg_cost_per_query_usd` | `$0.001049` | `$0.001036` | `-$0.000013` |
+| `retrieve_ms` p50 / `total_ms` p50 | `96.30` / `1257.97` | `61.23` / `1213.10` | `-35.07` / `-44.87` |
+
+*\*Notes on `text_hit_all@6` and `flip_rate`:*
+- `text_hit_all@6` shows `0.9615` because for `q34`, the primary retriever surfaces page 90 (which contains `"23,419"`), whereas the golden dataset lists page 106. In expanded context, `text_hit_all@context` is `1.0000 (26/26)`.
+- `q35` scored `[CORRECT, FALSE_REFUSAL, FALSE_REFUSAL]` across 3 repeats due to stochastic generation temperature at threshold.
+
+### C. Per-Question Changes vs. `exp5g-hybrid`
+1. **`q22` (`WRONG -> CORRECT`)**: User reworded query to specify *"in rupees"*; generator answered `"₹66,838 crore on a consolidated basis [6]"` from `tcs-ar-26-p24-c2`.
+2. **`q27` (`ANSWERED_ANYWAY -> CORRECT`)**: User promoted `q27` to answerable (`must_contain: ["12.6"]` on page 144); generator answered with Infosys's voluntary attrition rate of `"12.6% for fiscal 2026 [7]"`.
+3. **Rule 9 Silence Impact**: The meta-sentence *"The basis is not stated [n]."* vanished from `q01`, `q15`, `q17`, `q19`, `q33`, and `q37`, restoring faithfulness to `0.9615` (`25/26`).
+
+### D. Freeze Hash Specification & Test Split Safeguards
+Before `--split test` can run, `scripts/run_eval.py` verifies:
+1. Working tree is clean (`git status --porcelain` is empty).
+2. Git tag `frozen-config-v1` exists.
+3. Tag annotation exactly equals the SHA-256 hash computed over:
+   - Effective configuration YAML (`settings_hash = b39acad5c38c55006d3fa34fe0a6f10aa86a2b8d45c5f0abca39fa0e728da577`)
+   - System prompt string (`af686f9a6e695dd320e530911bcf3296f4c4142db228897524bea84ff1d11b77`, 1,541 chars)
+   - Golden questions file (`3d91929a252fae97ac4585833bda97d611133badbfa55814e983769639552f4c`)
+   - Total Chroma index chunk count (`3110`)
+   - **Candidate Freeze Hash**: **`17c942d0d1efcacc3ce597b8141e4a9f43936354fa93393ab01e66b6b3e09226`**

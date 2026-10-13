@@ -750,3 +750,82 @@ def test_rescore_run_no_api_or_judge_calls(tmp_path: Path) -> None:
     assert len(gen.calls) == 1
     assert len(judge_gen.calls) == 1
 
+
+def test_verify_test_split_safeguards(tmp_path: Path) -> None:
+    """Verifies that verify_test_split_safeguard refuses to run under all failure conditions."""
+    import subprocess
+
+    from scripts.run_eval import compute_freeze_hash, verify_test_split_safeguard
+
+    settings = _build_test_settings()
+    golden_file = tmp_path / "golden.json"
+    golden_file.write_text('[]', encoding="utf-8")
+
+    # Set up a temporary git repo
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "TestUser"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True, capture_output=True)
+
+    dummy_file = repo / "README.md"
+    dummy_file.write_text("# Repo", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo, check=True, capture_output=True)
+
+    # Refusal Case 1: Working tree is dirty
+    dirty_file = repo / "dirty.txt"
+    dirty_file.write_text("uncommitted", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="working tree is dirty"):
+        verify_test_split_safeguard(
+            settings=settings,
+            golden_path=golden_file,
+            store_count=100,
+            repo_dir=repo,
+        )
+
+    # Clean the working tree
+    dirty_file.unlink()
+
+    # Refusal Case 2: Tag frozen-config-v1 does not exist
+    with pytest.raises(RuntimeError, match="required git tag 'frozen-config-v1' does not exist"):
+        verify_test_split_safeguard(
+            settings=settings,
+            golden_path=golden_file,
+            store_count=100,
+            repo_dir=repo,
+        )
+
+    # Refusal Case 3: Tag annotation hash mismatch
+    subprocess.run(
+        ["git", "tag", "-a", "frozen-config-v1", "-m", "wrong_hash_12345"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    with pytest.raises(RuntimeError, match="config hash mismatch"):
+        verify_test_split_safeguard(
+            settings=settings,
+            golden_path=golden_file,
+            store_count=100,
+            repo_dir=repo,
+        )
+
+    # Success Case: Tag annotation contains the computed freeze hash
+    freeze_hash, _details = compute_freeze_hash(settings, golden_file, 100)
+    assert len(freeze_hash) == 64
+    subprocess.run(["git", "tag", "-d", "frozen-config-v1"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "tag", "-a", "frozen-config-v1", "-m", f"Freeze hash: {freeze_hash}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    verified_hash = verify_test_split_safeguard(
+        settings=settings,
+        golden_path=golden_file,
+        store_count=100,
+        repo_dir=repo,
+    )
+    assert verified_hash == freeze_hash
+

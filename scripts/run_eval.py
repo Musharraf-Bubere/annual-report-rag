@@ -2,8 +2,10 @@
 
 import argparse
 import sys
+from pathlib import Path
+from typing import Any
 
-from annual_report_rag.config import load_settings
+from annual_report_rag.config import Settings, load_settings
 from annual_report_rag.evaluation.golden import (
     check_expected_pages_in_store,
     load_golden_set,
@@ -127,6 +129,133 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def compute_freeze_hash(
+    settings: Settings,
+    golden_path: Path | str,
+    store_count: int,
+) -> tuple[str, dict[str, Any]]:
+    """Computes a deterministic SHA-256 freeze hash for verifying locked evaluation configuration."""
+    import dataclasses
+    import hashlib
+    import json
+
+    from annual_report_rag.generation.prompts import get_system_prompt
+
+    settings_payload = dataclasses.asdict(settings)
+    settings_json = json.dumps(settings_payload, sort_keys=True, default=str)
+    settings_hash = hashlib.sha256(settings_json.encode("utf-8")).hexdigest()
+
+    sys_prompt_text = get_system_prompt(settings)
+    sys_prompt_hash = hashlib.sha256(sys_prompt_text.encode("utf-8")).hexdigest()
+
+    golden_bytes = Path(golden_path).read_bytes()
+    golden_sha256 = hashlib.sha256(golden_bytes).hexdigest()
+
+    store_count_str = str(store_count)
+
+    combined_payload = (
+        f"settings:{settings_hash}\n"
+        f"prompt:{sys_prompt_hash}\n"
+        f"golden:{golden_sha256}\n"
+        f"chunks:{store_count_str}\n"
+    )
+    freeze_hash = hashlib.sha256(combined_payload.encode("utf-8")).hexdigest()
+
+    details = {
+        "settings_hash": settings_hash,
+        "sys_prompt_len": len(sys_prompt_text),
+        "sys_prompt_hash": sys_prompt_hash,
+        "golden_sha256": golden_sha256,
+        "store_chunk_count": store_count,
+        "freeze_hash": freeze_hash,
+    }
+    return freeze_hash, details
+
+
+def verify_test_split_safeguard(
+    settings: Settings,
+    golden_path: Path | str,
+    store_count: int,
+    repo_dir: Path | str = ".",
+    tag_name: str = "frozen-config-v1",
+) -> str:
+    """Enforces test-split execution safeguards.
+
+    Refuses to run unless:
+    (a) the working tree is clean
+    (b) git tag frozen-config-v1 exists
+    (c) config hash equals the one stored in that tag's annotation
+    """
+    import subprocess
+
+    cwd = Path(repo_dir)
+
+    # (a) Check clean working tree
+    status_proc = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if status_proc.returncode != 0:
+        raise RuntimeError(
+            f"Git status failed ({status_proc.stderr.strip()}). Cannot verify working tree cleanliness."
+        )
+    if status_proc.stdout.strip():
+        raise RuntimeError(
+            "Refusing to run --split test: working tree is dirty. "
+            "Commit or stash all changes before running test-split evaluation.\n"
+            f"Dirty files:\n{status_proc.stdout.strip()}"
+        )
+
+    # (b) Check git tag exists
+    tag_proc = subprocess.run(
+        ["git", "tag", "-l", tag_name],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if tag_proc.returncode != 0 or tag_name not in tag_proc.stdout.split():
+        raise RuntimeError(
+            f"Refusing to run --split test: required git tag '{tag_name}' does not exist."
+        )
+
+    # Compute freeze hash
+    freeze_hash, details = compute_freeze_hash(settings, golden_path, store_count)
+
+    print(f"\n=== Test Split Freeze Verification (Tag: {tag_name}) ===")
+    print(f"  Settings Hash:           {details['settings_hash']}")
+    print(
+        f"  System Prompt Length:    {details['sys_prompt_len']} chars "
+        f"(SHA-256: {details['sys_prompt_hash'][:16]}...)"
+    )
+    print(f"  Golden File SHA-256:     {details['golden_sha256']}")
+    print(f"  ChromaStore Chunk Count: {details['store_chunk_count']}")
+    print(f"  Computed Freeze Hash:    {freeze_hash}")
+
+    # (c) Check tag annotation matches config hash
+    tag_msg_proc = subprocess.run(
+        ["git", "tag", "-l", "--format=%(contents)", tag_name],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    tag_annotation = tag_msg_proc.stdout.strip()
+    if freeze_hash not in tag_annotation:
+        raise RuntimeError(
+            f"Refusing to run --split test: config hash mismatch.\n"
+            f"  Computed freeze hash:        {freeze_hash}\n"
+            f"  Tag '{tag_name}' annotation: '{tag_annotation}'\n"
+            "The current configuration does not match the frozen tag configuration."
+        )
+
+    print(f"  Freeze Hash Match:       VERIFIED (matches tag '{tag_name}' annotation)\n")
+    return freeze_hash
+
+
 def run_cli(args: argparse.Namespace) -> int:
     """Loads golden set, validates against ChromaStore, and optionally executes run_eval or rescore_run."""
     from dataclasses import replace
@@ -241,6 +370,12 @@ def run_cli(args: argparse.Namespace) -> int:
             store=store,
         )
     else:
+        if args.split == "test":
+            verify_test_split_safeguard(
+                settings=settings,
+                golden_path=settings.evaluation.golden_set_path,
+                store_count=store.count(),
+            )
         output = run_eval(
             golden=golden,
             settings=settings,
